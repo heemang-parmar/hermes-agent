@@ -43,7 +43,7 @@ import {
   $introSeed,
   $resumeExhaustedSessionId,
   $sessions,
-  getSessionOwnerHint,
+  getChatOwnerHint,
   resolveComposerSessionKey,
   sessionMatchesStoredId,
   sessionPinId,
@@ -264,7 +264,7 @@ export function ChatRuntimeBoundary({
   const connectionId = connection?.connectionId || (connection?.mode === 'local' ? 'local' : '')
 
   const ownerRoute = storedId
-    ? getSessionOwnerHint(storedId, connectionId ? { connectionId, profile: activeProfile } : undefined)
+    ? getChatOwnerHint(storedId, connectionId ? { connectionId, profile: activeProfile } : undefined)
     : undefined
 
   const ownerConnection = ownerRoute?.connectionId

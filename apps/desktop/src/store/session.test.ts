@@ -39,6 +39,7 @@ import {
   ensureDefaultWorkspaceCwd,
   forgetSessionOwnerHintsForConnection,
   forgetSessionOwnerHintsForSession,
+  getChatOwnerHint,
   getConfiguredDefaultProjectDir,
   getRememberedRoute,
   getRememberedSessionId,
@@ -200,6 +201,27 @@ describe('session owner hints', () => {
     expect(getSessionOwnerHint('same-session', sourceA)).toEqual(sourceA)
     expect(getSessionOwnerHint('same-session', sourceB)).toEqual(sourceB)
     expect(getSessionOwnerHint('same-session')).toBeUndefined()
+  })
+
+  it('finds a Bot chat opened in place under the active profile by its own owner', () => {
+    const kyra = { connectionId: 'local', mode: 'local' as const, profile: 'kyra', targetProfile: 'kyra' }
+    const active = { connectionId: 'local', profile: 'default' }
+
+    setSessionOwnerHint('bot-chat', kyra)
+
+    expect(getSessionOwnerHint('bot-chat', active)).toBeUndefined()
+    expect(getChatOwnerHint('bot-chat', active)).toEqual(kyra)
+  })
+
+  it('prefers the active-scope owner and stays undefined when owners are ambiguous', () => {
+    const mine = { connectionId: 'local', profile: 'default' }
+    const other = { connectionId: 'local', profile: 'kyra' }
+
+    setSessionOwnerHint('shared-id', mine)
+    setSessionOwnerHint('shared-id', other)
+
+    expect(getChatOwnerHint('shared-id', mine)).toEqual(mine)
+    expect(getChatOwnerHint('shared-id', { connectionId: 'local', profile: 'ayan' })).toBeUndefined()
   })
 
   it('bounds owner hints and evicts the oldest scoped identity', () => {

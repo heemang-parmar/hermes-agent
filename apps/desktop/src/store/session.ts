@@ -1373,6 +1373,17 @@ export function getSessionOwnerHint(
   return matches.length === 1 ? { ...matches[0].route } : undefined
 }
 
+/** The owner of a chat rendered under the window's active (connection, profile).
+ *  A Bot chat opened in place keeps the active profile while its hint is keyed
+ *  by the Bot's own profile, so a miss on the active scope falls back to the
+ *  session's only known owner (still undefined when owners are ambiguous). */
+export function getChatOwnerHint(
+  sessionId: string,
+  active?: Pick<SessionOwnerRoute, 'connectionId' | 'profile'>
+): SessionOwnerRoute | undefined {
+  return (active && getSessionOwnerHint(sessionId, active)) || getSessionOwnerHint(sessionId)
+}
+
 // Stored-session id whose resume has EXHAUSTED its bounded auto-retries (the
 // terminal-failure latch above kept failing through all MAX_RESUME_RETRIES
 // attempts). Distinct from $resumeFailedSessionId, which is armed *during* the
