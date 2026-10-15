@@ -33,6 +33,7 @@ import {
 
 import { avatarColor, botAppearance, BotFace } from './avatar'
 import { isBackfilledFacePng } from './avatar-image'
+import { botDesignation, botRowSubtitle } from './bot-row-subtitle'
 import {
   $botChatFocused,
   $focusedBotOwner,
@@ -69,11 +70,9 @@ import { botRecentSession, openBotRecentSession } from './recent-session'
 import { openRosterBot } from './roster-actions'
 import { botRosterMeta, botWorkspaceOwnerKey, setBotsWorkspaceOwner } from './routing'
 import {
-  A2A_PREFIX_RE,
   botCanonicalSessionId,
   botRowOwnsWorkspace,
   botWorkingMood,
-  previewKind,
   useTurnBusy,
   workerActiveAt
 } from './row-helpers'
@@ -188,18 +187,19 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
   // resolved the pinned canonical chat, preview THAT session — not the
   // profile's most recent (but unrelated) activity. Liveness checks above
   // keep last_session semantics: any recent activity means the bot is alive.
-  const { fromBot } = previewKind(previewSession?.preview)
-
-  // DM previews read like DMs: strip the delivery prefix, keep the message.
-  const displayPreview = stripPreviewMarkdown(
-    fromBot ? (previewSession?.preview || '').replace(A2A_PREFIX_RE, '').trim() || '…' : previewSession?.preview || ''
-  )
+  // A profile's fixed designation takes the line instead, so it never moves
+  // with chat traffic.
+  const {
+    designation,
+    fromBot,
+    preview: displayPreview
+  } = botRowSubtitle(botDesignation(bot, meta), previewSession?.preview)
 
   const handle = botHandle(bot.name, bot)
   const gatewayLabel = bot.connectionLabel || (bot.connectionId === 'local' ? b.bot.thisDevice : '')
-  const showDetailsRow = Boolean(showHandle || displayPreview || fromBot)
+  const showDetailsRow = Boolean(showHandle || designation || displayPreview || fromBot)
 
-  const rowTooltip = [displayName(bot, meta), `@${handle}`, gatewayLabel, sourceStatus.label]
+  const rowTooltip = [displayName(bot, meta), designation, `@${handle}`, gatewayLabel, sourceStatus.label]
     .filter(Boolean)
     .join(' · ')
 
@@ -317,8 +317,16 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
             {showHandle ? (
               <span className="shrink-0 font-mono text-[0.6875rem] text-(--ui-text-quaternary)">{`@${handle}`}</span>
             ) : null}
-            {showHandle && displayPreview ? <span className="shrink-0 text-(--ui-text-quaternary)">·</span> : null}
-            {displayPreview ? (
+            {showHandle && (designation || displayPreview) ? (
+              <span className="shrink-0 text-(--ui-text-quaternary)">·</span>
+            ) : null}
+            {designation ? (
+              <Tip label={designation}>
+                <span className="min-w-0 truncate" data-bot-designation="">
+                  {designation}
+                </span>
+              </Tip>
+            ) : displayPreview ? (
               <span className={cn('min-w-0 truncate', fromBot && 'italic')}>{displayPreview}</span>
             ) : null}
           </div>

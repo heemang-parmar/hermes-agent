@@ -81,6 +81,9 @@ export interface BotMeta {
   /** Set when the user has customized the avatar, so defaults stop applying. */
   custom?: boolean
   description?: string
+  /** Fixed job designation shown under the bot's name in place of the
+   *  latest-message preview (`bot-row-subtitle.ts`). Set by the profile owner. */
+  designation?: string
   groups?: string[]
   hidden?: boolean
   /** Data URL. Stripped before `profiles.configure`; travels via `set_asset`. */

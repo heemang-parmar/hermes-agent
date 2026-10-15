@@ -230,3 +230,30 @@ describe('age label reflects the last worker run, not only the last conversation
     expect(screen.getByText('3d')).toBeTruthy()
   })
 })
+
+describe('fixed designation under the bot name', () => {
+  const DM = "Message from agent 'scout': latest secret"
+  const last = { id: 's1', last_active: 1, preview: DM } as RosterRow['last_session']
+
+  it('replaces the latest-message preview, non-italic, and labels the row', () => {
+    const row = renderRow({
+      name: 'shiven',
+      last_session: last,
+      ui_meta: { 'hermes-bots': { designation: 'Business Head · One Infinity Labs' } }
+    } as RosterRow)
+
+    const line = row.querySelector('[data-bot-designation]')
+
+    expect(line?.textContent).toBe('Business Head · One Infinity Labs')
+    expect(line?.className).not.toContain('italic')
+    expect(row.textContent).not.toContain('latest secret')
+    expect(row.getAttribute('aria-label')).toContain('Business Head · One Infinity Labs')
+  })
+
+  it('keeps the italic bot-to-bot preview when no designation is set', () => {
+    const row = renderRow({ name: 'scout-peer', last_session: last } as RosterRow)
+
+    expect(row.querySelector('[data-bot-designation]')).toBeNull()
+    expect(screen.getByText('latest secret').className).toContain('italic')
+  })
+})
