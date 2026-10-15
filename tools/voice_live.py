@@ -44,9 +44,11 @@ GPT_LIVE_VOICES = (
 
 # Persona for the voice layer. Short on purpose: the live model has a small context window and
 # the vendor guide asks for role + style + a labelled delegation policy, nothing more. The
-# backend (Hermes) carries the real instructions, tools and memory.
+# backend (Hermes) carries the real instructions, tools and memory. ``{identity}`` is the
+# profile's own name (a Bot chat dials the Bot's profile), so the voice never introduces itself
+# as "Hermes" while the Bot's agent is the one answering.
 LIVE_PERSONA = (
-    "You are Hermes, a calm and friendly voice assistant. Speak naturally at an unhurried pace. "
+    "{identity} Speak naturally at an unhurried pace. "
     "Be clear and direct, not overly cheerful. If the user is frustrated, acknowledge it briefly "
     "and focus on the next helpful step.\n\n"
     "Backchannel policy: Use moderate backchannels. Acknowledge naturally without competing with "
@@ -123,9 +125,27 @@ def _resolve_credentials(live: dict[str, Any]) -> tuple[str, str]:
     return api_key, base_url
 
 
+_ROLE_MAX_CHARS = 200
+
+
+def _live_identity() -> str:
+    """Who the voice says it is: the active profile's display name (or Bot title) and its
+    description, else plain Hermes for an unnamed profile."""
+    from hermes_cli.profiles import read_profile_meta
+    from hermes_constants import get_hermes_home
+    meta = read_profile_meta(get_hermes_home())
+    name = meta["display_name"] or meta["bot_title"]
+    if not name:
+        return "You are Hermes, a calm and friendly voice assistant."
+    identity = f"You are {name}, a calm and friendly voice assistant. Your name is {name}; never call yourself Hermes."
+    role = meta["description"][:_ROLE_MAX_CHARS].strip()
+    return f"{identity} Your role: {role}" if role else identity
+
+
 def live_instructions(live: Optional[dict[str, Any]] = None) -> str:
     extra = str((live if live is not None else _live_section()).get("instructions") or "").strip()
-    return f"{LIVE_PERSONA}\n\n{extra}" if extra else LIVE_PERSONA
+    persona = LIVE_PERSONA.format(identity=_live_identity())
+    return f"{persona}\n\n{extra}" if extra else persona
 
 
 def resolve_gpt_live_status() -> dict[str, Any]:
