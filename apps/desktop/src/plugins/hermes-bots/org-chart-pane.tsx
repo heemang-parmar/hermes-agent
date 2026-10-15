@@ -19,7 +19,16 @@
  */
 
 import { Button, cn, Codicon, host, Tip, useValue } from '@hermes/plugin-sdk'
-import { type CSSProperties, type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type CSSProperties,
+  type PointerEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 
 import { avatarColor, botAppearance, BotFace } from './avatar'
 import { isBackfilledFacePng } from './avatar-image'
@@ -28,6 +37,7 @@ import { $botMeta, botRosterKey, useRoster } from './data'
 import { botsText, useBots } from './i18n'
 import { displayName } from './labels'
 import { buildOrgChart, type OrgChartNode } from './org-chart'
+import { OrgCallBar, OrgCallButton } from './org-voice-call'
 import { openRosterBot } from './roster-actions'
 import { botRosterMeta } from './routing'
 import { SECTION_PALETTE, sectionColor, sectionTint } from './section-colors'
@@ -89,16 +99,28 @@ function useBotCard(bot: RosterRow) {
 const CARD_BUTTON =
   'min-w-0 rounded-lg text-left transition-[background-color,box-shadow,transform] duration-150 hover:-translate-y-px hover:shadow-md focus-visible:ring-2 focus-visible:ring-(--ui-accent) focus-visible:outline-none'
 
+/** A card plus its mic toggle. The toggle is a sibling of the card button
+ *  (buttons can't nest): the card opens the chat, the mic starts a call. */
+function OrgCard({ bot, callClassName, children }: { bot: RosterRow; callClassName: string; children: ReactNode }) {
+  return (
+    <div className="group/org-card relative min-w-0">
+      {children}
+      <OrgCallButton bot={bot} className={cn('absolute', callClassName)} />
+    </div>
+  )
+}
+
 /** A section's lead: large face, serif name. */
 function BotHero({ bot, color, size = 'md' }: { bot: RosterRow; color: string; size?: 'lg' | 'md' }) {
   const { designation, face, label, name } = useBotCard(bot)
   const large = size === 'lg'
 
   return (
+    <OrgCard bot={bot} callClassName="top-1/2 right-2 -translate-y-1/2">
     <Tip label={label}>
       <button
         aria-label={label}
-        className={cn(CARD_BUTTON, 'flex w-full items-center gap-3 p-2 hover:bg-(--ui-bg-elevated)/60')}
+        className={cn(CARD_BUTTON, 'flex w-full items-center gap-3 p-2 pr-11 hover:bg-(--ui-bg-elevated)/60')}
         data-slot="org-chart-bot"
         onClick={() => void openRosterBot(bot)}
         type="button"
@@ -117,6 +139,7 @@ function BotHero({ bot, color, size = 'md' }: { bot: RosterRow; color: string; s
         </span>
       </button>
     </Tip>
+    </OrgCard>
   )
 }
 
@@ -125,10 +148,11 @@ function BotListRow({ bot, color }: { bot: RosterRow; color: string }) {
   const { designation, face, label, name } = useBotCard(bot)
 
   return (
+    <OrgCard bot={bot} callClassName="top-1/2 right-1.5 -translate-y-1/2">
     <Tip label={label}>
       <button
         aria-label={label}
-        className={cn(CARD_BUTTON, 'flex w-full items-center gap-2.5 px-2 py-1.5 hover:bg-(--ui-bg-secondary)')}
+        className={cn(CARD_BUTTON, 'flex w-full items-center gap-2.5 px-2 py-1.5 pr-10 hover:bg-(--ui-bg-secondary)')}
         data-slot="org-chart-bot"
         onClick={() => void openRosterBot(bot)}
         type="button"
@@ -147,6 +171,7 @@ function BotListRow({ bot, color }: { bot: RosterRow; color: string }) {
         </span>
       </button>
     </Tip>
+    </OrgCard>
   )
 }
 
@@ -155,10 +180,11 @@ function BotTile({ bot, color }: { bot: RosterRow; color: string }) {
   const { designation, face, label, name } = useBotCard(bot)
 
   return (
+    <OrgCard bot={bot} callClassName="top-1.5 right-1.5">
     <Tip label={label}>
       <button
         aria-label={label}
-        className={cn(CARD_BUTTON, 'flex flex-col items-center gap-1.5 border px-2 pt-3 pb-2.5 text-center')}
+        className={cn(CARD_BUTTON, 'flex w-full flex-col items-center gap-1.5 border px-2 pt-3 pb-2.5 text-center')}
         data-slot="org-chart-bot"
         onClick={() => void openRosterBot(bot)}
         style={{ background: sectionTint(color, 9), borderColor: sectionTint(color, 32) }}
@@ -178,6 +204,7 @@ function BotTile({ bot, color }: { bot: RosterRow; color: string }) {
         ) : null}
       </button>
     </Tip>
+    </OrgCard>
   )
 }
 
@@ -653,6 +680,8 @@ export function OrgChartPane() {
       <div className="pointer-events-none absolute bottom-2 left-3 rounded-md bg-(--ui-bg-elevated)/80 px-2 py-0.5 text-[0.6875rem] text-(--ui-text-quaternary)">
         {b.org.hint}
       </div>
+
+      <OrgCallBar />
     </div>
   )
 }

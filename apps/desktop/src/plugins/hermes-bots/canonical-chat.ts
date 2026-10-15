@@ -599,6 +599,14 @@ export function createCanonicalChat(
   return run
 }
 
+/** The stored id of the bot's existing Bot Chat (its lineage tip), without
+ *  opening it; null when the bot has no chat yet. Never mints one. */
+export async function findBotChatId(owner: RosterRow | string): Promise<null | string> {
+  const existing = await findExistingCanonicalChat(owner)
+
+  return existing?.id ? String(existing.resolved_id || existing.id) : null
+}
+
 /** Open the bot's ONE forever chat and return the opened registry id.
  *
  *  The whole resolution is one registry consultation ON THE BOT'S OWN

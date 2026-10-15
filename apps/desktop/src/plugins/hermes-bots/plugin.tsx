@@ -22,6 +22,7 @@ import {
   LocalizedTabTitle,
   PALETTE_AREA,
   SIDEBAR_PROFILE_GROUP_HEADER_AREA,
+  TITLEBAR_AREAS,
   translateNow
 } from '@hermes/plugin-sdk'
 import type { ChatEmptyProps, PluginContext, ProfileGroupRoute } from '@hermes/plugin-sdk'
@@ -70,6 +71,7 @@ import { annotateOrphanedGroupChatMembers } from './hygiene'
 import { BOTS_LOCALES } from './i18n'
 import { displayName } from './labels'
 import { openOrgChart } from './org-chart-pane'
+import { OrgCallTitlebar } from './org-voice-call'
 import { startBotRelay, stopBotRelay } from './relay'
 import { $activityToasts } from './roster-actions'
 import {
@@ -722,6 +724,15 @@ export default {
     } else {
       registerRoutinesPane(true)
     }
+
+    // A voice call started from the org chart lives in a permanent slot, so it
+    // keeps going while the user moves between tabs.
+    ctx.register({
+      id: 'org-call',
+      area: TITLEBAR_AREAS.right,
+      order: 5,
+      render: () => <OrgCallTitlebar />
+    })
 
     // A bot's chat before it has spoken: core's splash is Hermes' wordmark and
     // stands down for any session that exists, so the bot titles its own.

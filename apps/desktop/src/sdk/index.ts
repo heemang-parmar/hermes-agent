@@ -1741,7 +1741,6 @@ export {
   PanelRowMenu,
   PanelSectionLabel
 } from '@/app/overlays/panel'
-
 export {
   type ProfileGroupHeaderContribution,
   type ProfileGroupRoute,
@@ -1758,6 +1757,7 @@ export {
  *  look) — use it for colour picking instead of driving app widgets through
  *  React internals; pair it with `host.sessions.setColor` for session colours. */
 export { APPEARANCE_AREAS } from '@/app/settings/appearance-contrib'
+
 /** THE settings rows: `ListRow` is label + description with the control beside
  *  it (wide) or under it (narrow); `ToggleRow` is the one on/off row — a Switch,
  *  never an Off/On pill pair. Use them for preference rows in plugin panes and
@@ -1793,6 +1793,9 @@ export {
 } from '@/app/shell/model-menu-row-decorations'
 export type { StatusbarItem } from '@/app/shell/statusbar-controls'
 export type { TitlebarTool } from '@/app/shell/titlebar-controls'
+// A GPT-Live voice call with no chat view: mount to call, unmount to hang up.
+// The caller wires delegation (prompt.submit) and the reply stream.
+export { LiveVoiceCall, type LiveVoiceCallProps, type LiveVoiceCallReply } from '@/app/voice-call/live-voice-call'
 /** Canonical raw message renderer: applies Desktop message transforms (including
  * `MEDIA:` delivery directives) and the same rich Markdown/media components as
  * core chat. Prefer this over raw Streamdown for transcript-style messages. */
@@ -1893,11 +1896,11 @@ export type { GatewayEventListener } from '@/contrib/events'
  *  `ctx.register` stays the door for permanent contributions. Namespace the
  *  id with your plugin slug (`kanban:board-switcher`). */
 export { Contribute, type ContributeProps } from '@/contrib/react/contribute'
+/** Settings ▸ Plugins entries (`ctx.registerSettingsPage`); `pluginSettingsHref` deep-links one. */
+export { pluginSettingsHref, SETTINGS_PLUGINS_AREA } from '@/contrib/settings-pages'
 
 // -- contracts ----------------------------------------------------------------
 
-/** Settings ▸ Plugins entries (`ctx.registerSettingsPage`); `pluginSettingsHref` deep-links one. */
-export { pluginSettingsHref, SETTINGS_PLUGINS_AREA } from '@/contrib/settings-pages'
 export type { Contribution } from '@/contrib/types'
 /** The live gateway instance type — for typing the `gateway` prop `ConnectorsTab`
  *  takes; obtain the instance from `host.getGateway()`. */
@@ -1978,7 +1981,6 @@ export { PROFILE_SWATCHES, profileColor, profileColorSoft } from '@/lib/profile-
  *  `ctx.socket` frame invalidating a query). Inside components keep using
  *  `useQueryClient`. */
 export { queryClient } from '@/lib/query-client'
-
 /** Compact labels for the reasoning levels exported from @hermes/shared, so a
  *  plugin surfacing a thinking depth uses the same spelling as the app. */
 export { reasoningEffortLabel } from '@/lib/reasoning-effort'
@@ -1987,6 +1989,7 @@ export { reasoningEffortLabel } from '@/lib/reasoning-effort'
  *  setup.runtime_check, reconciled) — pass `host.request`. Don't hand-roll
  *  readiness from raw RPC shapes. */
 export { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
+
 /** Row-decoration slots: register a `data` contribution with a `render` for
  *  `SESSION_ROW_AREAS.leading` / `.trailing` to decorate sidebar session rows
  *  (the props carry the row's stored session id). */
@@ -2028,6 +2031,8 @@ export { ackStoredSessionId, forgetSessionUnread, markSessionUnreadFinished } fr
  *  contribution, not a `host.sidebar` verb, so it is attributed and dropped
  *  on disable. */
 export { SIDEBAR_NAV_PREFS_AREA, type SidebarNavPrefsContribution } from '@/store/sidebar-nav'
+// Live captions of a voice call, keyed by the call's caption target.
+export { $voiceCaptions, clearVoiceCaptions, type VoiceCaption } from '@/store/voice-captions'
 /** Live accent override — set a hex and the ACTIVE theme repaints with its
  *  accent family re-seeded from it (see `retintTheme`); `null` restores the
  *  authored palette. Deliberately not persisted: it is an authoring knob, not

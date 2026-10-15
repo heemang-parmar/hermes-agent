@@ -156,6 +156,13 @@ type BotsMessages = {
     chatWith: (name: string) => string
     hint: string
     noSections: string
+    talkTo: (name: string) => string
+    endTalk: (name: string) => string
+    callWith: (name: string) => string
+    callStatus: { connecting: string; listening: string; speaking: string; thinking: string }
+    openChat: string
+    endCall: string
+    callNeedsChat: (name: string) => string
   }
   /** User-made roster sections (folders the user files bots into). */
   sections: {
@@ -636,7 +643,14 @@ const en: BotsMessages = {
     resetZoom: 'Reset zoom to 100%',
     chatWith: name => `Chat with ${name}`,
     hint: 'Drag to pan · ⌘/Ctrl + scroll to zoom · click a bot to chat',
-    noSections: 'No bots in sections yet. File bots into sections in the Bots pane to see them here.'
+    noSections: 'No bots in sections yet. File bots into sections in the Bots pane to see them here.',
+    talkTo: name => `Talk to ${name}`,
+    endTalk: name => `End call with ${name}`,
+    callWith: name => `On a call with ${name}`,
+    callStatus: { connecting: 'Connecting…', listening: 'Listening', speaking: 'Speaking', thinking: 'Thinking' },
+    openChat: 'Open chat',
+    endCall: 'End',
+    callNeedsChat: name => `Opened ${name}'s chat to set it up. Press the mic again to talk.`
   },
   sections: {
     newSection: 'New section',
@@ -1114,7 +1128,14 @@ const ja: BotsMessages = {
     resetZoom: '100% に戻す',
     chatWith: name => `${name} とチャット`,
     hint: 'ドラッグで移動 · ⌘/Ctrl + スクロールでズーム · ボットをクリックでチャット',
-    noSections: 'セクションに入ったボットがまだいません。ボットペインでセクションに整理するとここに表示されます。'
+    noSections: 'セクションに入ったボットがまだいません。ボットペインでセクションに整理するとここに表示されます。',
+    talkTo: name => `${name} と話す`,
+    endTalk: name => `${name} との通話を終了`,
+    callWith: name => `${name} と通話中`,
+    callStatus: { connecting: '接続中…', listening: '聞いています', speaking: '話しています', thinking: '考えています' },
+    openChat: 'チャットを開く',
+    endCall: '終了',
+    callNeedsChat: name => `${name} のチャットを準備するため開きました。もう一度マイクを押して話してください。`
   },
   sections: {
     newSection: '新しいセクション',
@@ -1588,7 +1609,14 @@ const zh: BotsMessages = {
     resetZoom: '重置为 100%',
     chatWith: name => `与 ${name} 聊天`,
     hint: '拖动平移 · ⌘/Ctrl + 滚轮缩放 · 点击机器人开始聊天',
-    noSections: '分区中还没有机器人。在机器人面板中把机器人放入分区后即可在此查看。'
+    noSections: '分区中还没有机器人。在机器人面板中把机器人放入分区后即可在此查看。',
+    talkTo: name => `与 ${name} 通话`,
+    endTalk: name => `结束与 ${name} 的通话`,
+    callWith: name => `正在与 ${name} 通话`,
+    callStatus: { connecting: '正在连接…', listening: '正在聆听', speaking: '正在说话', thinking: '正在思考' },
+    openChat: '打开聊天',
+    endCall: '结束',
+    callNeedsChat: name => `已打开 ${name} 的聊天以完成设置。请再次按下麦克风开始通话。`
   },
   sections: {
     newSection: '新建分区',
@@ -2052,7 +2080,14 @@ const zhHant: BotsMessages = {
     resetZoom: '重設為 100%',
     chatWith: name => `與 ${name} 聊天`,
     hint: '拖曳平移 · ⌘/Ctrl + 捲動縮放 · 點擊機器人開始聊天',
-    noSections: '分區中還沒有機器人。在機器人面板中把機器人放入分區後即可在此查看。'
+    noSections: '分區中還沒有機器人。在機器人面板中把機器人放入分區後即可在此查看。',
+    talkTo: name => `與 ${name} 通話`,
+    endTalk: name => `結束與 ${name} 的通話`,
+    callWith: name => `正在與 ${name} 通話`,
+    callStatus: { connecting: '正在連線…', listening: '正在聆聽', speaking: '正在說話', thinking: '正在思考' },
+    openChat: '開啟聊天',
+    endCall: '結束',
+    callNeedsChat: name => `已開啟 ${name} 的聊天以完成設定。請再次按下麥克風開始通話。`
   },
   sections: {
     newSection: '新增分區',
