@@ -6,6 +6,7 @@ import type { useBots } from './i18n'
 import type { RosterGroupRow } from './roster-pane-derivation'
 import { GatewayKindGlyph, GatewaySectionHeading, RosterSectionHeader } from './roster-sections'
 import type { ResolvedRosterGatewaySection } from './roster-sections'
+import { sectionColor } from './section-colors'
 import type { BotMeta, GroupChat, GroupMember, RosterRow } from './types'
 import type { $botSections, SectionDialogState } from './user-sections'
 import {
@@ -21,6 +22,7 @@ import {
   sectionDescendantIds,
   sectionSiblingPosition,
   type SectionTreeNode,
+  setBotSectionColor,
   setBotSectionParent,
   UNASSIGNED_SECTION_KEY
 } from './user-sections'
@@ -121,9 +123,12 @@ export function rosterSectionRenderers({
       const collapsed = rosterSectionCollapsed(key)
       const position = block.id ? sectionSiblingPosition(block.id, userSections) : { count: 0, index: -1 }
       const children = node.children.filter(shown)
+      const record = block.id ? userSections.find(section => section.id === block.id) : undefined
+      const color = block.id ? sectionColor(block.id, userSections) : undefined
 
       return (
         <SectionDropZone
+          color={color}
           isSource={
             Boolean(dragging) &&
             block.rows.some(row =>
@@ -153,10 +158,13 @@ export function rosterSectionRenderers({
             canMoveDown={position.index >= 0 && position.index < position.count - 1}
             canMoveUp={position.index > 0}
             collapsed={collapsed}
+            color={color}
+            colorKey={record?.color ?? null}
             count={node.total}
             id={block.id}
             moveTargets={block.id ? moveTargetsFor(block.id) : []}
             name={block.name}
+            onColor={record && !record.parentId ? key => setBotSectionColor(record.id, key) : undefined}
             onDelete={() => block.id && removeSection(block.id)}
             onMove={delta => block.id && moveBotSection(block.id, delta)}
             onNewSubsection={() => block.id && setSectionDialog({ mode: 'create', parentId: block.id })}

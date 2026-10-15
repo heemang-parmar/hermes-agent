@@ -45,6 +45,9 @@ export interface BotSection {
   /** The section this one is nested under. Absent at the top level, so a flat
    *  list persists exactly as it did before nesting existed. */
   parentId?: string
+  /** A palette key (`section-colors.ts`) the user picked for a top-level
+   *  section. Absent means "automatic" — the colour follows its position. */
+  color?: string
 }
 
 /** One link of a member's ancestry (`BotMeta.sectionParents`), root first. */
@@ -109,8 +112,9 @@ export function normalizeBotSections(value: unknown): BotSection[] {
 
     seen.add(id)
     const parentId = String((entry as BotSection)?.parentId || '').trim()
+    const color = String((entry as BotSection)?.color || '').trim()
 
-    out.push(parentId ? { id, name, parentId } : { id, name })
+    out.push({ id, name, ...(parentId ? { parentId } : {}), ...(color ? { color } : {}) })
   }
 
   // A parent that no longer exists, or a loop (two desktops each nesting one
@@ -132,11 +136,33 @@ export function normalizeBotSections(value: unknown): BotSection[] {
     }
   }
 
-  return out.map(({ id, name }) => {
+  return out.map(({ color, id, name }) => {
     const parentId = parentOf.get(id)
 
-    return parentId ? { id, name, parentId } : { id, name }
+    return { id, name, ...(parentId ? { parentId } : {}), ...(color ? { color } : {}) }
   })
+}
+
+/** Set (or, with `null`, reset to automatic) a section's colour. */
+export function setBotSectionColor(id: string, color: null | string): void {
+  persistBotSections(
+    $botSections.get().map(section => {
+      if (section.id !== id) {
+        return section
+      }
+
+      const { color: _previous, ...rest } = section
+
+      return color ? { ...rest, color } : rest
+    })
+  )
+}
+
+/** `section` lifted to the top level: no `parentId` key, everything else kept. */
+function topLevel(section: BotSection): BotSection {
+  const { parentId: _parent, ...rest } = section
+
+  return rest
 }
 
 /** The sections above `id`, root first — empty at the top level. */
@@ -317,7 +343,7 @@ export function setBotSectionParent(id: string, parentId: null | string, roster:
     return false
   }
 
-  const moved: BotSection = parentId ? { ...section, parentId } : { id: section.id, name: section.name }
+  const moved: BotSection = parentId ? { ...section, parentId } : topLevel(section)
 
   persistBotSections([...list.filter(s => s.id !== id), moved])
   void restampSections([id, ...descendants], roster)
@@ -380,7 +406,7 @@ export function adoptBotSectionsFromMeta(roster: RosterRow[], metaByName: Record
   const settled = (id: string) => !pendingRestamps.has(id)
 
   const withParent = (section: BotSection, parentId: null | string): BotSection =>
-    parentId ? { ...section, parentId } : { id: section.id, name: section.name }
+    parentId ? { ...section, parentId } : topLevel(section)
 
   const updated = local.map(s => {
     if (!settled(s.id)) {
@@ -477,7 +503,7 @@ export function deleteBotSection(id: string, roster: RosterRow[] = []): { member
   const descendants = sectionDescendantIds(id, list)
 
   const reparent = (sections: BotSection[], ids: string[], to: null | string) =>
-    sections.map(s => (ids.includes(s.id) ? (to ? { ...s, parentId: to } : { id: s.id, name: s.name }) : s))
+    sections.map(s => (ids.includes(s.id) ? (to ? { ...s, parentId: to } : topLevel(s)) : s))
 
   const token = Symbol(id)
 

@@ -69,13 +69,7 @@ import { duplicateBot } from './profile-ops'
 import { botRecentSession, openBotRecentSession } from './recent-session'
 import { openRosterBot } from './roster-actions'
 import { botRosterMeta, botWorkspaceOwnerKey, setBotsWorkspaceOwner } from './routing'
-import {
-  botCanonicalSessionId,
-  botRowOwnsWorkspace,
-  botWorkingMood,
-  useTurnBusy,
-  workerActiveAt
-} from './row-helpers'
+import { botCanonicalSessionId, botRowOwnsWorkspace, botWorkingMood, useTurnBusy, workerActiveAt } from './row-helpers'
 import { openBotScreen } from './screen-open'
 import type { GroupMember, RosterRow, SidebarRowLabels } from './types'
 import {

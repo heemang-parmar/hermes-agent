@@ -41,6 +41,7 @@ import { type DragEvent, type ReactNode, useEffect, useRef, useState } from 'rea
 
 import { useBots } from './i18n'
 import { RosterSectionHeader } from './roster-sections'
+import { SECTION_COLOR_KEYS, SECTION_PALETTE, type SectionColorKey } from './section-colors'
 import { $draggingBot, $sectionDropTarget, BOT_DRAG_MIME } from './user-sections'
 
 // ── name dialog ──────────────────────────────────────────────────────────────
@@ -149,12 +150,18 @@ interface UserSectionHeaderProps {
   canMoveDown: boolean
   canMoveUp: boolean
   collapsed: boolean
+  /** Drawn colour of the section (its root's). */
+  color?: string
+  /** The picked colour key, null when automatic. Only a top-level section
+   *  passes `onColor`; a subsection follows its root. */
+  colorKey?: null | string
   count: number
   /** null for Unassigned, which has no record and therefore no menu. */
   id: null | string
   moveTargets?: SectionMoveTarget[]
   name: string
   onDelete: () => void
+  onColor?: (key: null | SectionColorKey) => void
   onMove: (delta: number) => void
   onNewSubsection?: () => void
   onRename: () => void
@@ -166,10 +173,13 @@ export function UserSectionHeader({
   canMoveDown,
   canMoveUp,
   collapsed,
+  color,
+  colorKey = null,
   count,
   id,
   moveTargets = [],
   name,
+  onColor,
   onDelete,
   onMove,
   onNewSubsection,
@@ -209,6 +219,31 @@ export function UserSectionHeader({
   // the move would be refused for (its current parent, itself, its own
   // subtree) stay listed but disabled, so the tree reads the same as the pane.
   const offered = onReparent && moveTargets.some(target => !target.disabled)
+
+  // "Color": automatic, then the palette as swatches. The current choice is
+  // disabled rather than checked, matching how "Move into" marks where the
+  // section already sits.
+  const colorChoices: { disabled: boolean; key: null | SectionColorKey; label: string; swatch: string }[] = onColor
+    ? [
+        { disabled: !colorKey, key: null, label: b.sections.colorAuto, swatch: '' },
+        ...SECTION_COLOR_KEYS.map(key => ({
+          disabled: colorKey === key,
+          key,
+          label: b.sections.colorName(key),
+          swatch: SECTION_PALETTE[key]
+        }))
+      ]
+    : []
+
+  const colorLabel = (choice: (typeof colorChoices)[number]) => (
+    <span className="flex items-center">
+      <span
+        className="mr-2 size-3 shrink-0 rounded-full border border-(--ui-stroke-secondary)"
+        style={choice.swatch ? { background: choice.swatch } : undefined}
+      />
+      {choice.label}
+    </span>
+  )
 
   const moveTargetLabel = (target: SectionMoveTarget) => (
     <span className="flex min-w-0 items-center" style={{ paddingLeft: `${target.depth * 0.75}rem` }}>
@@ -254,6 +289,25 @@ export function UserSectionHeader({
             </DropdownMenuSubContent>
           </DropdownMenuSub>
         ) : null}
+        {colorChoices.length ? (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <Codicon className="mr-1.5" name="symbol-color" />
+              {b.sections.color}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              {colorChoices.map(choice => (
+                <DropdownMenuItem
+                  disabled={choice.disabled}
+                  key={choice.key ?? 'auto'}
+                  onSelect={() => onColor?.(choice.key)}
+                >
+                  {colorLabel(choice)}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onDelete} variant="destructive">
           <Codicon className="mr-1.5" name="trash" />
@@ -270,6 +324,7 @@ export function UserSectionHeader({
           <RosterSectionHeader
             action={action}
             collapsed={collapsed}
+            color={color}
             count={count}
             icon="folder"
             label={name}
@@ -296,6 +351,22 @@ export function UserSectionHeader({
                   onSelect={() => onReparent(target.id)}
                 >
                   {moveTargetLabel(target)}
+                </ContextMenuItem>
+              ))}
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+        ) : null}
+        {colorChoices.length ? (
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>{b.sections.color}</ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              {colorChoices.map(choice => (
+                <ContextMenuItem
+                  disabled={choice.disabled}
+                  key={choice.key ?? 'auto'}
+                  onSelect={() => onColor?.(choice.key)}
+                >
+                  {colorLabel(choice)}
                 </ContextMenuItem>
               ))}
             </ContextMenuSubContent>
@@ -336,6 +407,8 @@ export function useEscapeCancelsBotDrag(): void {
 
 interface SectionDropZoneProps {
   children: ReactNode
+  /** Tints the nested rail with the section's colour. */
+  color?: string
   /** Whether the dragged bot is already filed here — then the zone is not a
    *  target, and the OS shows the no-drop cursor instead of a highlight that
    *  promises a move that would change nothing. */
@@ -352,7 +425,7 @@ interface SectionDropZoneProps {
  *  empty placeholder) lights up while a bot is over it. Blocks nest, and the
  *  innermost block under the pointer is the target — its parent's block,
  *  which also contains the pointer, neither lights nor takes the drop. */
-export function SectionDropZone({ children, isSource, nested, onDropBot, zoneKey }: SectionDropZoneProps) {
+export function SectionDropZone({ children, color, isSource, nested, onDropBot, zoneKey }: SectionDropZoneProps) {
   const dragging = useValue($draggingBot)
   const target = useValue($sectionDropTarget)
   const armed = Boolean(dragging) && !isSource
@@ -442,6 +515,7 @@ export function SectionDropZone({ children, isSource, nested, onDropBot, zoneKey
         event.preventDefault()
         onDropBot(key)
       }}
+      style={nested && color ? { borderLeftColor: `color-mix(in srgb, ${color} 55%, transparent)` } : undefined}
     >
       {children}
     </div>

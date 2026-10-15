@@ -227,6 +227,8 @@ interface RosterSectionHeaderProps {
    *  button cannot nest a button). User sections put their ⋯ menu here. */
   action?: ReactNode
   collapsed: boolean
+  /** A user section's colour (`section-colors.ts`): tints the icon and name. */
+  color?: string
   count: number
   gatewayKind?: string
   icon?: string
@@ -240,6 +242,7 @@ interface RosterSectionHeaderProps {
 export function RosterSectionHeader({
   action,
   collapsed,
+  color,
   count,
   gatewayKind,
   icon,
@@ -266,10 +269,15 @@ export function RosterSectionHeader({
         // TODO(bot-mode-types): neither `gatewayKind` nor `icon` is required, so a header
         // given neither renders `codicon-undefined`. Both current callers pass exactly one.
         // @ts-expect-error `icon` is optional here; Codicon's `name` is required.
-        <Codicon className="shrink-0" name={icon} />
+        <Codicon className="shrink-0" name={icon} style={color ? { color } : undefined} />
       )}
       <span className="flex min-w-0 items-center gap-1">
-        <span className="min-w-0 truncate">{label}</span>
+        <span
+          className="min-w-0 truncate"
+          style={color ? { color: `color-mix(in srgb, ${color} 70%, var(--ui-text-secondary))` } : undefined}
+        >
+          {label}
+        </span>
         {status && !status.available ? <span className="sr-only">{status.label}</span> : null}
       </span>
       <span aria-hidden className="min-w-0 flex-1" />

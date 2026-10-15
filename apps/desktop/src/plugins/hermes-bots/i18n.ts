@@ -180,6 +180,9 @@ type BotsMessages = {
     newSubTitle: (parent: string) => string
     moveSectionInto: string
     topLevel: string
+    color: string
+    colorAuto: string
+    colorName: (key: string) => string
     deleted: (name: string, count: number) => string
     undo: string
   }
@@ -628,7 +631,7 @@ const en: BotsMessages = {
     resetZoom: 'Reset zoom to 100%',
     chatWith: name => `Chat with ${name}`,
     hint: 'Drag to pan · ⌘/Ctrl + scroll to zoom · click a bot to chat',
-    noSections: 'No sections yet. Make sections in the Bots pane, or start one here.'
+    noSections: 'No bots in sections yet. File bots into sections in the Bots pane to see them here.'
   },
   sections: {
     newSection: 'New section',
@@ -651,6 +654,21 @@ const en: BotsMessages = {
     newSubTitle: parent => `New section in ${parent}`,
     moveSectionInto: 'Move into',
     topLevel: 'Top level',
+    color: 'Color',
+    colorAuto: 'Automatic',
+    colorName: key =>
+      (
+        ({
+          amber: 'Amber',
+          blue: 'Blue',
+          coral: 'Coral',
+          green: 'Green',
+          rose: 'Rose',
+          slate: 'Slate',
+          teal: 'Teal',
+          violet: 'Violet'
+        }) as Record<string, string>
+      )[key] ?? key,
     deleted: (name, count) =>
       count === 0
         ? `Deleted “${name}”`
@@ -1085,7 +1103,7 @@ const ja: BotsMessages = {
     resetZoom: '100% に戻す',
     chatWith: name => `${name} とチャット`,
     hint: 'ドラッグで移動 · ⌘/Ctrl + スクロールでズーム · ボットをクリックでチャット',
-    noSections: 'セクションがまだありません。ボットペインで作成するか、ここで作成してください。'
+    noSections: 'セクションに入ったボットがまだいません。ボットペインでセクションに整理するとここに表示されます。'
   },
   sections: {
     newSection: '新しいセクション',
@@ -1108,6 +1126,21 @@ const ja: BotsMessages = {
     newSubTitle: parent => `${parent} 内の新しいセクション`,
     moveSectionInto: '移動先',
     topLevel: '最上位',
+    color: '色',
+    colorAuto: '自動',
+    colorName: key =>
+      (
+        ({
+          amber: 'アンバー',
+          blue: 'ブルー',
+          coral: 'コーラル',
+          green: 'グリーン',
+          rose: 'ローズ',
+          slate: 'スレート',
+          teal: 'ティール',
+          violet: 'バイオレット'
+        }) as Record<string, string>
+      )[key] ?? key,
     deleted: (name, count) =>
       count === 0
         ? `「${name}」を削除しました`
@@ -1538,7 +1571,7 @@ const zh: BotsMessages = {
     resetZoom: '重置为 100%',
     chatWith: name => `与 ${name} 聊天`,
     hint: '拖动平移 · ⌘/Ctrl + 滚轮缩放 · 点击机器人开始聊天',
-    noSections: '还没有分区。请在机器人面板中创建，或在此新建。'
+    noSections: '分区中还没有机器人。在机器人面板中把机器人放入分区后即可在此查看。'
   },
   sections: {
     newSection: '新建分区',
@@ -1561,6 +1594,21 @@ const zh: BotsMessages = {
     newSubTitle: parent => `在 ${parent} 中新建分区`,
     moveSectionInto: '移入',
     topLevel: '顶层',
+    color: '颜色',
+    colorAuto: '自动',
+    colorName: key =>
+      (
+        ({
+          amber: '琥珀',
+          blue: '蓝色',
+          coral: '珊瑚',
+          green: '绿色',
+          rose: '玫瑰',
+          slate: '石板灰',
+          teal: '青色',
+          violet: '紫罗兰'
+        }) as Record<string, string>
+      )[key] ?? key,
     deleted: (name, count) => (count === 0 ? `已删除“${name}”` : `已删除“${name}” — ${count} 个机器人已移至未分类`),
     undo: '撤销'
   },
@@ -1981,7 +2029,7 @@ const zhHant: BotsMessages = {
     resetZoom: '重設為 100%',
     chatWith: name => `與 ${name} 聊天`,
     hint: '拖曳平移 · ⌘/Ctrl + 捲動縮放 · 點擊機器人開始聊天',
-    noSections: '還沒有分區。請在機器人面板中建立，或在此新增。'
+    noSections: '分區中還沒有機器人。在機器人面板中把機器人放入分區後即可在此查看。'
   },
   sections: {
     newSection: '新增分區',
@@ -2004,6 +2052,21 @@ const zhHant: BotsMessages = {
     newSubTitle: parent => `在 ${parent} 中新增分區`,
     moveSectionInto: '移入',
     topLevel: '最上層',
+    color: '顏色',
+    colorAuto: '自動',
+    colorName: key =>
+      (
+        ({
+          amber: '琥珀',
+          blue: '藍色',
+          coral: '珊瑚',
+          green: '綠色',
+          rose: '玫瑰',
+          slate: '石板灰',
+          teal: '青色',
+          violet: '紫羅蘭'
+        }) as Record<string, string>
+      )[key] ?? key,
     deleted: (name, count) => (count === 0 ? `已刪除「${name}」` : `已刪除「${name}」— ${count} 個機器人已移至未分類`),
     undo: '復原'
   },
