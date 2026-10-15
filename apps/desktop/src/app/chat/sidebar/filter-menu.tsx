@@ -58,6 +58,7 @@ import {
   $profiles,
   $showAllProfiles,
   normalizeProfileKey,
+  profileLabel,
   requestProfileCreate,
   toggleShowAllProfiles
 } from '@/store/profile'
@@ -170,8 +171,13 @@ export function SidebarFilterMenu({ className }: { className?: string }) {
   const projectFilter = useStore($sidebarProjectFilter)
   const profileFilter = useStore($sidebarProfileFilter)
   const showAllProfiles = useStore($showAllProfiles)
-  const profileNames = useStore($profiles).map(profile => normalizeProfileKey(profile.name))
-  const narrowsByProfile = showAllProfiles && profileNames.length > 1
+
+  const profileOptions = useStore($profiles).map(profile => ({
+    id: normalizeProfileKey(profile.name),
+    label: profileLabel(profile)
+  }))
+
+  const narrowsByProfile = showAllProfiles && profileOptions.length > 1
   const prFilter = useStore($sidebarPrFilter)
   const showArchived = useStore($sidebarShowArchived)
   const filtersActive = useStore($sidebarFiltersActive)
@@ -377,12 +383,12 @@ export function SidebarFilterMenu({ className }: { className?: string }) {
                   The actions below stand on their own. */}
               {narrowsByProfile && (
                 <>
-                  {profileNames.map(name => (
+                  {profileOptions.map(({ id, label }) => (
                     <OptionCheckbox
-                      checked={profileFilter.includes(name)}
-                      key={name}
-                      onCheck={() => toggleSidebarProfileFilter(name)}
-                      option={{ icon: 'account', id: name, label: name }}
+                      checked={profileFilter.includes(id)}
+                      key={id}
+                      onCheck={() => toggleSidebarProfileFilter(id)}
+                      option={{ icon: 'account', id, label }}
                     />
                   ))}
                   <DropdownMenuSeparator />
@@ -421,7 +427,7 @@ export function SidebarFilterMenu({ className }: { className?: string }) {
               visible while it's on, or deleting your way back down to one
               profile would strand the sidebar in a mode nothing can leave (the
               rail hides its switcher at one profile too). */}
-          {(profileNames.length > 1 || showAllProfiles) && (
+          {(profileOptions.length > 1 || showAllProfiles) && (
             <OptionCheckbox
               checked={showAllProfiles}
               onCheck={toggleShowAllProfiles}
