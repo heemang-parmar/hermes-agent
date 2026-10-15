@@ -49,4 +49,17 @@ describe('buildOrgChart', () => {
     expect(chart.roots[0]!.bots.map(b => b.name)).toEqual(['shiven'])
     expect(chart.roots[0]!.total).toBe(1)
   })
+
+  it("leaves out a connection's bare default profile but keeps a named or filed one", () => {
+    const laptop = { connectionId: 'local', connectionLabel: 'This MacBook', name: 'default', remoteSource: true } as RosterRow
+    const studio = { connectionId: 'studio', display_name: 'Ariv', name: 'default', remoteSource: true } as RosterRow
+    const filed = { connectionId: 'other', name: 'default', sourceScoped: true } as RosterRow
+
+    const chart = buildOrgChart([laptop, studio, filed, bot('loose')], sections, {
+      'other::default': { sectionId: 'foundation' }
+    })
+
+    expect(chart.unassigned.map(b => b.connectionId ?? b.name)).toEqual(['studio', 'loose'])
+    expect(chart.roots.find(node => node.section.id === 'foundation')!.bots.map(b => b.connectionId)).toEqual(['other'])
+  })
 })

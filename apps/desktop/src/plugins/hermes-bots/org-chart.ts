@@ -8,7 +8,9 @@
  * roster's sections. Pure; the pane renders it.
  */
 
+import { isDefaultBot } from './data'
 import { isBotHidden } from './hidden-bots'
+import { botRosterMeta } from './routing'
 import type { BotMeta, RosterRow } from './types'
 import { type BotSection, groupRowsBySection, nestSectionBlocks, type SectionTreeNode } from './user-sections'
 
@@ -26,12 +28,31 @@ export interface OrgChart {
   unassigned: RosterRow[]
 }
 
+/** A connection's default profile that nobody has made into a bot — no Bot
+ *  Mode title, no display name, filed in no section. It is the gateway itself
+ *  (a laptop's own runtime shows up as one), not a member of the organisation.
+ *  A default profile the user named or filed (Ariv) stays on the chart. */
+function isBareDefault(bot: RosterRow, metaByName: Record<string, BotMeta>) {
+  const meta = botRosterMeta(bot, metaByName)
+
+  return (
+    isDefaultBot(bot) &&
+    !meta?.title?.trim() &&
+    !meta?.sectionId &&
+    !String(bot.ui_meta?.['hermes-bots']?.title || bot.title || '').trim() &&
+    !bot.display_name?.trim()
+  )
+}
+
 export function buildOrgChart(
   roster: RosterRow[],
   sections: BotSection[],
   metaByName: Record<string, BotMeta>
 ): OrgChart {
-  const visible = (roster || []).filter(bot => bot && !bot.ghost && !isBotHidden(bot, metaByName))
+  const visible = (roster || []).filter(
+    bot => bot && !bot.ghost && !isBotHidden(bot, metaByName) && !isBareDefault(bot, metaByName)
+  )
+
   const tree = nestSectionBlocks(groupRowsBySection(visible, sections, metaByName), sections)
   const byId = new Map(sections.map(section => [section.id, section]))
 
