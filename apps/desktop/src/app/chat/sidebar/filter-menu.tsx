@@ -18,8 +18,10 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import { ProfileGlyph } from '@/components/ui/profile-glyph'
 import { useI18n } from '@/i18n'
 import { desktopGit } from '@/lib/desktop-git'
+import { resolveProfileColor } from '@/lib/profile-color'
 import { cn } from '@/lib/utils'
 import { $showsAdvancedChrome } from '@/store/interface-mode'
 import {
@@ -55,6 +57,7 @@ import {
   toggleSidebarStatusFilter
 } from '@/store/layout'
 import {
+  $profileColors,
   $profiles,
   $showAllProfiles,
   normalizeProfileKey,
@@ -71,6 +74,8 @@ import type { SessionStatusBucket } from '@/store/session-dot-state'
 import { $sessionsHaveCost } from '@/store/sidebar-archive'
 
 interface Option<T extends string = string> {
+  /** A profile row: drawn with the profile's own glyph (avatar, else its initial). */
+  profile?: { color: null | string; isDefault: boolean; label: string; name: string }
   /** A status dot's full className, from the row's own vocabulary. */
   dot?: string
   icon?: string
@@ -81,6 +86,10 @@ interface Option<T extends string = string> {
 function OptionGlyph({ option }: { option: Option }) {
   if (option.dot) {
     return <span aria-hidden="true" className={cn('shrink-0', option.dot)} />
+  }
+
+  if (option.profile) {
+    return <ProfileGlyph {...option.profile} aria-hidden="true" withAvatar />
   }
 
   return option.icon ? <Codicon className="text-(--ui-text-tertiary)" name={option.icon} size="0.8125rem" /> : null
@@ -172,9 +181,17 @@ export function SidebarFilterMenu({ className }: { className?: string }) {
   const profileFilter = useStore($sidebarProfileFilter)
   const showAllProfiles = useStore($showAllProfiles)
 
+  const profileColors = useStore($profileColors)
+
   const profileOptions = useStore($profiles).map(profile => ({
     id: normalizeProfileKey(profile.name),
-    label: profileLabel(profile)
+    label: profileLabel(profile),
+    profile: {
+      color: resolveProfileColor(profile.name, profileColors),
+      isDefault: profile.is_default,
+      label: profileLabel(profile),
+      name: profile.name
+    }
   }))
 
   const narrowsByProfile = showAllProfiles && profileOptions.length > 1
@@ -383,12 +400,12 @@ export function SidebarFilterMenu({ className }: { className?: string }) {
                   The actions below stand on their own. */}
               {narrowsByProfile && (
                 <>
-                  {profileOptions.map(({ id, label }) => (
+                  {profileOptions.map(({ id, label, profile }) => (
                     <OptionCheckbox
                       checked={profileFilter.includes(id)}
                       key={id}
                       onCheck={() => toggleSidebarProfileFilter(id)}
-                      option={{ icon: 'account', id, label }}
+                      option={{ id, label, profile }}
                     />
                   ))}
                   <DropdownMenuSeparator />

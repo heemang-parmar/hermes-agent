@@ -20,11 +20,10 @@ import { Codicon } from '@/components/ui/codicon'
 import { Tip } from '@/components/ui/tooltip'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { useI18n } from '@/i18n'
+import { agentAvatarCache, resolveAgentAvatar } from '@/lib/agent-avatar'
 import { triggerHaptic } from '@/lib/haptics'
 import { StopFilled } from '@/lib/icons'
-import { LruCache } from '@/lib/lru-cache'
 import { cn } from '@/lib/utils'
-import { $gateway } from '@/store/gateway'
 import { notifyThreadEditOpen } from '@/store/thread-scroll'
 import { isWatchWindow } from '@/store/windows'
 
@@ -92,91 +91,6 @@ export const StopGlyph = <StopFilled aria-hidden className="size-3.5 -translate-
 // a user bubble.
 export const AGENT_MESSAGE_RE =
   /^(?:Message from (?:🤖\s*)?([^:\n(]{1,64}?)(?:\s*\(@([a-z0-9][a-z0-9_-]{0,63})(?:@[a-zA-Z0-9][a-zA-Z0-9_-]{0,63})?\))?:\s*|\[Message from agent '([^']{1,64})'\]\s*)([\s\S]*)$/u
-
-// sender handle -> avatar data URL. Module-level so a chat full of notices
-// from one bot resolves once. Bounded LRU: handles are parsed out of message
-// text (unbounded distinct senders over a long session list) and hits hold
-// base64 avatar data URLs, so an unbounded map pins image bytes for the
-// window's lifetime. Eviction only costs a refetch.
-// Misses expire after 30s — an avatar can appear at any moment (bot just
-// created, art backfill still running), and a permanent negative cache
-// froze the 🤖 glyph until an app restart.
-const AGENT_AVATAR_CACHE_MAX = 128
-export const agentAvatarCache = new LruCache<string, { at: number; url: null | string }>(AGENT_AVATAR_CACHE_MAX)
-const AVATAR_MISS_TTL_MS = 30_000
-const agentAvatarInflight = new Map<string, Promise<null | string>>()
-
-export async function resolveAgentAvatar(handle: string): Promise<null | string> {
-  const key = handle.trim().toLowerCase()
-
-  if (!key) {
-    return null
-  }
-
-  const hit = agentAvatarCache.get(key)
-
-  if (hit) {
-    if (hit.url !== null) {
-      return hit.url
-    }
-
-    // Negative entry: honor it only within the TTL, then re-probe.
-    if (Date.now() - hit.at < AVATAR_MISS_TTL_MS) {
-      return null
-    }
-  }
-
-  const inflight = agentAvatarInflight.get(key)
-
-  if (inflight) {
-    return inflight
-  }
-
-  const run = (async (): Promise<null | string> => {
-    try {
-      const gateway = $gateway.get()
-
-      if (!gateway) {
-        return null
-      }
-
-      const res = await gateway.request<{ profiles?: Array<{ has_avatar?: boolean; name: string }> }>('profiles.list', {
-        include_sessions: false
-      })
-
-      const profiles = res?.profiles ?? []
-      let profile = profiles.find(p => p.name.toLowerCase() === key)
-
-      // 'hermes' is the conventional alias for the primary profile.
-      if (!profile && key === 'hermes') {
-        profile = profiles.find(p => p.name === 'default')
-      }
-
-      if (!profile?.has_avatar) {
-        return null
-      }
-
-      const asset = await gateway.request<{ data?: string; found?: boolean }>('profiles.get_asset', {
-        asset: 'avatar',
-        name: profile.name
-      })
-
-      return asset?.found && asset.data ? asset.data : null
-    } catch {
-      // Older gateway (no profiles.* RPCs) or transient failure — the 🤖
-      // glyph fallback is always correct.
-      return null
-    } finally {
-      agentAvatarInflight.delete(key)
-    }
-  })()
-
-  agentAvatarInflight.set(key, run)
-  const out = await run
-  agentAvatarCache.set(key, { at: Date.now(), url: out })
-
-  return out
-}
 
 const AgentMessageNote: FC<{ text: string }> = ({ text }) => {
   const match = AGENT_MESSAGE_RE.exec(text)

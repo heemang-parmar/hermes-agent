@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { $gateway } from '@/store/gateway'
 
-import { agentAvatarCache, resolveAgentAvatar } from './user-message'
+import { agentAvatarCache, resolveAgentAvatar } from './agent-avatar'
 
 // The avatar cache is keyed by a handle parsed out of message text — unbounded
 // distinct senders over a long session — and its hits hold base64 avatar data

@@ -284,7 +284,7 @@ function ProfileItem({
       value={name}
     >
       <span className="flex min-w-0 items-center gap-1.5">
-        <ProfileGlyph aria-hidden="true" color={color} isDefault={isDefault} name={name} />
+        <ProfileGlyph aria-hidden="true" color={color} isDefault={isDefault} label={label} name={name} withAvatar />
         <span className="truncate">{label}</span>
       </span>
     </DropdownMenuRadioItem>
