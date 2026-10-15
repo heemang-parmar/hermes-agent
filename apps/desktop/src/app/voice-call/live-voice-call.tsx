@@ -82,6 +82,15 @@ const LiveVoiceCallEngine: FC<LiveVoiceCallProps> = ({
     seedHistory: () => []
   })
 
+  // The hook auto-starts only on an enabled false→true edge (the composer's
+  // voice button); a call is enabled from its first render, so mounting is the
+  // start. start() is idempotent while a session is up or starting.
+  const { start } = conversation
+
+  useEffect(() => {
+    void start()
+  }, [start])
+
   const onStatusRef = useRef(onStatus)
   onStatusRef.current = onStatus
 
