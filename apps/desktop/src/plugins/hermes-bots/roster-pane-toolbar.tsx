@@ -13,6 +13,7 @@ import {
 
 import { botSourceStatus } from './data'
 import type { useBots } from './i18n'
+import { openOrgChart } from './org-chart-pane'
 import { setActivityToasts } from './roster-actions'
 import { GatewayKindGlyph } from './roster-sections'
 import type { rosterGatewayOptions } from './roster-sections'
@@ -74,6 +75,17 @@ export function renderRosterToolbar({
           Bots
         </span>
         <div className="flex items-center gap-0.5">
+          <Tip label={b.org.open}>
+            <Button
+              aria-label={b.org.open}
+              className="rounded-md text-(--ui-text-tertiary) hover:text-foreground"
+              onClick={openOrgChart}
+              size="icon-xs"
+              variant="ghost"
+            >
+              <Codicon name="type-hierarchy" />
+            </Button>
+          </Tip>
           <Tip
             label={activityToasts ? 'Activity toasts on — click to silence' : 'Activity toasts off — click to enable'}
           >

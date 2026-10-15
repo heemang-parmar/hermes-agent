@@ -69,6 +69,7 @@ import { groupWorkspaceOwnerKey } from './group-membership'
 import { annotateOrphanedGroupChatMembers } from './hygiene'
 import { BOTS_LOCALES } from './i18n'
 import { displayName } from './labels'
+import { openOrgChart } from './org-chart-pane'
 import { startBotRelay, stopBotRelay } from './relay'
 import { $activityToasts } from './roster-actions'
 import {
@@ -729,6 +730,17 @@ export default {
       area: CHAT_EMPTY_AREA,
       data: {
         render: ({ sessionId }: ChatEmptyProps) => <BotChatEmpty sessionId={sessionId} />
+      }
+    })
+
+    ctx.register({
+      id: 'org-chart',
+      area: PALETTE_AREA,
+      data: {
+        id: `${ID}.org-chart`,
+        label: 'Open Org Chart',
+        keywords: ['org', 'organization', 'chart', 'hierarchy', 'bots', 'sections', 'team'],
+        run: openOrgChart
       }
     })
 

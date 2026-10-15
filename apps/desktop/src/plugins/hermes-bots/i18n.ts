@@ -143,6 +143,20 @@ type BotsMessages = {
     rosterUnavailable: (reason: string) => string
     waitingForGateway: string
   }
+  /** The org chart workspace tab: the user sections drawn as a hierarchy. */
+  org: {
+    title: string
+    open: string
+    root: string
+    empty: string
+    zoomIn: string
+    zoomOut: string
+    fit: string
+    resetZoom: string
+    chatWith: (name: string) => string
+    hint: string
+    noSections: string
+  }
   /** User-made roster sections (folders the user files bots into). */
   sections: {
     newSection: string
@@ -603,6 +617,19 @@ const en: BotsMessages = {
     waitingForGateway:
       'Waiting for the gateway connection… (remote gateways can take a few seconds; retries automatically)'
   },
+  org: {
+    title: 'Org chart',
+    open: 'Open org chart',
+    root: 'Organization',
+    empty: 'No bots here yet',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    fit: 'Fit to view',
+    resetZoom: 'Reset zoom to 100%',
+    chatWith: name => `Chat with ${name}`,
+    hint: 'Drag to pan · ⌘/Ctrl + scroll to zoom · click a bot to chat',
+    noSections: 'No sections yet. Make sections in the Bots pane, or start one here.'
+  },
   sections: {
     newSection: 'New section',
     newTitle: 'New section',
@@ -1047,6 +1074,19 @@ const ja: BotsMessages = {
       `名簿を取得できません: ${reason}。ゲートウェイが profiles.list より前の場合は、Hermes を更新してゲートウェイを再起動してください。`,
     waitingForGateway: 'ゲートウェイ接続を待っています…（リモートは数秒かかることがあります。自動で再試行します）'
   },
+  org: {
+    title: '組織図',
+    open: '組織図を開く',
+    root: '組織',
+    empty: 'まだボットがいません',
+    zoomIn: '拡大',
+    zoomOut: '縮小',
+    fit: '全体を表示',
+    resetZoom: '100% に戻す',
+    chatWith: name => `${name} とチャット`,
+    hint: 'ドラッグで移動 · ⌘/Ctrl + スクロールでズーム · ボットをクリックでチャット',
+    noSections: 'セクションがまだありません。ボットペインで作成するか、ここで作成してください。'
+  },
   sections: {
     newSection: '新しいセクション',
     newTitle: '新しいセクション',
@@ -1487,6 +1527,19 @@ const zh: BotsMessages = {
     rosterUnavailable: reason => `无法获取名单：${reason}。如果网关早于 profiles.list，请更新 Hermes 并重启网关。`,
     waitingForGateway: '正在等待网关连接…（远程网关可能需要几秒；会自动重试）'
   },
+  org: {
+    title: '组织架构图',
+    open: '打开组织架构图',
+    root: '组织',
+    empty: '这里还没有机器人',
+    zoomIn: '放大',
+    zoomOut: '缩小',
+    fit: '适应视图',
+    resetZoom: '重置为 100%',
+    chatWith: name => `与 ${name} 聊天`,
+    hint: '拖动平移 · ⌘/Ctrl + 滚轮缩放 · 点击机器人开始聊天',
+    noSections: '还没有分区。请在机器人面板中创建，或在此新建。'
+  },
   sections: {
     newSection: '新建分区',
     newTitle: '新建分区',
@@ -1916,6 +1969,19 @@ const zhHant: BotsMessages = {
     retryNow: '立即重試',
     rosterUnavailable: reason => `無法取得名單：${reason}。如果閘道早於 profiles.list，請更新 Hermes 並重新啟動閘道。`,
     waitingForGateway: '正在等待閘道連線…（遠端閘道可能需要幾秒；會自動重試）'
+  },
+  org: {
+    title: '組織架構圖',
+    open: '開啟組織架構圖',
+    root: '組織',
+    empty: '這裡還沒有機器人',
+    zoomIn: '放大',
+    zoomOut: '縮小',
+    fit: '符合視圖',
+    resetZoom: '重設為 100%',
+    chatWith: name => `與 ${name} 聊天`,
+    hint: '拖曳平移 · ⌘/Ctrl + 捲動縮放 · 點擊機器人開始聊天',
+    noSections: '還沒有分區。請在機器人面板中建立，或在此新增。'
   },
   sections: {
     newSection: '新增分區',
