@@ -161,6 +161,11 @@ type BotsMessages = {
     moveTo: string
     newSectionEllipsis: string
     removeFromSection: string
+    /** Nesting: a section inside another section. */
+    newSubsection: string
+    newSubTitle: (parent: string) => string
+    moveSectionInto: string
+    topLevel: string
     deleted: (name: string, count: number) => string
     undo: string
   }
@@ -615,6 +620,10 @@ const en: BotsMessages = {
     moveTo: 'Move to section',
     newSectionEllipsis: 'New section…',
     removeFromSection: 'Remove from section',
+    newSubsection: 'New subsection…',
+    newSubTitle: parent => `New section in ${parent}`,
+    moveSectionInto: 'Move into',
+    topLevel: 'Top level',
     deleted: (name, count) =>
       count === 0
         ? `Deleted “${name}”`
@@ -1055,6 +1064,10 @@ const ja: BotsMessages = {
     moveTo: 'セクションへ移動',
     newSectionEllipsis: '新しいセクション…',
     removeFromSection: 'セクションから外す',
+    newSubsection: '新しいサブセクション…',
+    newSubTitle: parent => `${parent} 内の新しいセクション`,
+    moveSectionInto: '移動先',
+    topLevel: '最上位',
     deleted: (name, count) =>
       count === 0
         ? `「${name}」を削除しました`
@@ -1491,6 +1504,10 @@ const zh: BotsMessages = {
     moveTo: '移动到分区',
     newSectionEllipsis: '新建分区…',
     removeFromSection: '移出分区',
+    newSubsection: '新建子分区…',
+    newSubTitle: parent => `在 ${parent} 中新建分区`,
+    moveSectionInto: '移入',
+    topLevel: '顶层',
     deleted: (name, count) => (count === 0 ? `已删除“${name}”` : `已删除“${name}” — ${count} 个机器人已移至未分类`),
     undo: '撤销'
   },
@@ -1917,6 +1934,10 @@ const zhHant: BotsMessages = {
     moveTo: '移動到分區',
     newSectionEllipsis: '新增分區…',
     removeFromSection: '移出分區',
+    newSubsection: '新增子分區…',
+    newSubTitle: parent => `在 ${parent} 中新增分區`,
+    moveSectionInto: '移入',
+    topLevel: '最上層',
     deleted: (name, count) => (count === 0 ? `已刪除「${name}」` : `已刪除「${name}」— ${count} 個機器人已移至未分類`),
     undo: '復原'
   },

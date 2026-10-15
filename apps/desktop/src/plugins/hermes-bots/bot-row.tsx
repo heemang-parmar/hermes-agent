@@ -84,6 +84,7 @@ import {
   $draggingBot,
   BOT_DRAG_MIME,
   botSectionId,
+  flattenSectionTree,
   groupChatSectionId,
   groupDragKey,
   moveBotsToSection,
@@ -460,11 +461,12 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
         <ContextMenuSub>
           <ContextMenuSubTrigger>{b.sections.moveTo}</ContextMenuSubTrigger>
           <ContextMenuSubContent>
-            {sections.map(section => (
+            {flattenSectionTree(sections).map(({ depth, section }) => (
               <ContextMenuItem
                 disabled={section.id === currentSectionId}
                 key={section.id}
                 onSelect={() => void moveBotsToSection([bot], section.id)}
+                style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
               >
                 <Codicon className="mr-1.5" name="folder" />
                 {section.name}
@@ -643,11 +645,12 @@ export function GroupRow({ active, group, members, needsYou, onOpen, onDisband, 
         <ContextMenuSub>
           <ContextMenuSubTrigger>{b.sections.moveTo}</ContextMenuSubTrigger>
           <ContextMenuSubContent>
-            {sections.map(section => (
+            {flattenSectionTree(sections).map(({ depth, section }) => (
               <ContextMenuItem
                 disabled={section.id === currentSectionId}
                 key={section.id}
                 onSelect={() => moveGroupChatsToSection([group], section.id)}
+                style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
               >
                 <Codicon className="mr-1.5" name="folder" />
                 {section.name}

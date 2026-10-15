@@ -1850,6 +1850,11 @@ export {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  // Submenus: a Bot Mode section heading's ⋯ menu moves the section into
+  // another one, the same nested list its right-click menu shows.
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 export { EmptyState } from '@/components/ui/empty-state'

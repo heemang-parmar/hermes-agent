@@ -73,6 +73,10 @@ export interface BotMeta {
    *  the name with the membership lets another desktop on the same backend
    *  rebuild a section it never created instead of drawing a flat list. */
   sectionName?: null | string
+  /** The sections above `sectionId`, root first, as `{ id, name }` — written
+   *  only for a nested section (null once lifted back to the top level), so
+   *  another desktop rebuilds the same tree, not just a flat folder. */
+  sectionParents?: null | { id: string; name: string }[]
   color?: string
   /** Set when the user has customized the avatar, so defaults stop applying. */
   custom?: boolean

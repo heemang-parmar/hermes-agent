@@ -15,6 +15,9 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
   Dialog,
   DialogContent,
@@ -25,6 +28,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   Input,
   isSubmitEnter,
@@ -35,7 +41,7 @@ import { type DragEvent, type ReactNode, useEffect, useRef, useState } from 'rea
 
 import { useBots } from './i18n'
 import { RosterSectionHeader } from './roster-sections'
-import { $draggingBot, BOT_DRAG_MIME } from './user-sections'
+import { $draggingBot, $sectionDropTarget, BOT_DRAG_MIME } from './user-sections'
 
 // ── name dialog ──────────────────────────────────────────────────────────────
 
@@ -46,12 +52,21 @@ interface SectionNameDialogProps {
   onOpenChange: (open: boolean) => void
   onSubmit: (name: string) => void
   open: boolean
+  /** Creating inside this section — titles the dialog with where it lands. */
+  parentName?: string
 }
 
 /** One small dialog for both creating and renaming a section — the app renames
  *  sessions through the same Dialog + Input + Cancel/Save shape, so a section
  *  rename feels like every other rename. */
-export function SectionNameDialog({ initialName, mode, onOpenChange, onSubmit, open }: SectionNameDialogProps) {
+export function SectionNameDialog({
+  initialName,
+  mode,
+  onOpenChange,
+  onSubmit,
+  open,
+  parentName
+}: SectionNameDialogProps) {
   const { t } = useI18n()
   const b = useBots()
   const [value, setValue] = useState(initialName)
@@ -82,7 +97,13 @@ export function SectionNameDialog({ initialName, mode, onOpenChange, onSubmit, o
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>{mode === 'create' ? b.sections.newTitle : b.sections.renameTitle}</DialogTitle>
+          <DialogTitle>
+            {mode === 'rename'
+              ? b.sections.renameTitle
+              : parentName
+                ? b.sections.newSubTitle(parentName)
+                : b.sections.newTitle}
+          </DialogTitle>
         </DialogHeader>
         <Input
           aria-label={b.sections.nameLabel}
@@ -114,6 +135,16 @@ export function SectionNameDialog({ initialName, mode, onOpenChange, onSubmit, o
 
 // ── heading ──────────────────────────────────────────────────────────────────
 
+/** One entry of the "Move into" list: a section (indented by `depth`) or the
+ *  top level (`id` null). */
+export interface SectionMoveTarget {
+  /** Already where this section sits, or inside it — listed but not offered. */
+  disabled: boolean
+  depth: number
+  id: null | string
+  name: string
+}
+
 interface UserSectionHeaderProps {
   canMoveDown: boolean
   canMoveUp: boolean
@@ -121,10 +152,13 @@ interface UserSectionHeaderProps {
   count: number
   /** null for Unassigned, which has no record and therefore no menu. */
   id: null | string
+  moveTargets?: SectionMoveTarget[]
   name: string
   onDelete: () => void
   onMove: (delta: number) => void
+  onNewSubsection?: () => void
   onRename: () => void
+  onReparent?: (parentId: null | string) => void
   onToggle: () => void
 }
 
@@ -134,10 +168,13 @@ export function UserSectionHeader({
   collapsed,
   count,
   id,
+  moveTargets = [],
   name,
   onDelete,
   onMove,
+  onNewSubsection,
   onRename,
+  onReparent,
   onToggle
 }: UserSectionHeaderProps) {
   const b = useBots()
@@ -163,9 +200,22 @@ export function UserSectionHeader({
   // first. Both drive the identical actions, so neither can drift.
   const items = [
     { icon: 'edit', label: b.sections.rename, onSelect: onRename },
+    ...(onNewSubsection ? [{ icon: 'new-folder', label: b.sections.newSubsection, onSelect: onNewSubsection }] : []),
     { disabled: !canMoveUp, icon: 'arrow-up', label: b.sections.moveUp, onSelect: () => onMove(-1) },
     { disabled: !canMoveDown, icon: 'arrow-down', label: b.sections.moveDown, onSelect: () => onMove(1) }
   ]
+
+  // "Move into": the whole tree, indented, with the top level first. Sections
+  // the move would be refused for (its current parent, itself, its own
+  // subtree) stay listed but disabled, so the tree reads the same as the pane.
+  const offered = onReparent && moveTargets.some(target => !target.disabled)
+
+  const moveTargetLabel = (target: SectionMoveTarget) => (
+    <span className="flex min-w-0 items-center" style={{ paddingLeft: `${target.depth * 0.75}rem` }}>
+      <Codicon className="mr-1.5 shrink-0" name={target.id ? 'folder' : 'list-tree'} />
+      <span className="truncate">{target.id ? target.name : b.sections.topLevel}</span>
+    </span>
+  )
 
   const action = (
     <DropdownMenu>
@@ -185,6 +235,25 @@ export function UserSectionHeader({
             {item.label}
           </DropdownMenuItem>
         ))}
+        {offered ? (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <Codicon className="mr-1.5" name="folder-opened" />
+              {b.sections.moveSectionInto}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              {moveTargets.map(target => (
+                <DropdownMenuItem
+                  disabled={target.disabled}
+                  key={target.id ?? 'top-level'}
+                  onSelect={() => onReparent(target.id)}
+                >
+                  {moveTargetLabel(target)}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onDelete} variant="destructive">
           <Codicon className="mr-1.5" name="trash" />
@@ -216,6 +285,22 @@ export function UserSectionHeader({
             {item.label}
           </ContextMenuItem>
         ))}
+        {offered ? (
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>{b.sections.moveSectionInto}</ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              {moveTargets.map(target => (
+                <ContextMenuItem
+                  disabled={target.disabled}
+                  key={target.id ?? 'top-level'}
+                  onSelect={() => onReparent(target.id)}
+                >
+                  {moveTargetLabel(target)}
+                </ContextMenuItem>
+              ))}
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+        ) : null}
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={onDelete} variant="destructive">
           {t.common.delete}
@@ -255,31 +340,61 @@ interface SectionDropZoneProps {
    *  target, and the OS shows the no-drop cursor instead of a highlight that
    *  promises a move that would change nothing. */
   isSource: boolean
-  /** Drawn inside a gateway bucket: indented under a hairline rail so the
-   *  two heading levels read as parent and child. */
+  /** Drawn inside a gateway bucket or a parent section: indented under a
+   *  hairline rail so the two heading levels read as parent and child. */
   nested?: boolean
   onDropBot: (rosterKey: string) => void
+  /** Unique per block; names this zone in `$sectionDropTarget`. */
+  zoneKey: string
 }
 
 /** A section block as a drop target: the whole block (heading + rows, or the
- *  empty placeholder) lights up while a bot is over it. */
-export function SectionDropZone({ children, isSource, nested, onDropBot }: SectionDropZoneProps) {
+ *  empty placeholder) lights up while a bot is over it. Blocks nest, and the
+ *  innermost block under the pointer is the target — its parent's block,
+ *  which also contains the pointer, neither lights nor takes the drop. */
+export function SectionDropZone({ children, isSource, nested, onDropBot, zoneKey }: SectionDropZoneProps) {
   const dragging = useValue($draggingBot)
-  const [over, setOver] = useState(false)
+  const target = useValue($sectionDropTarget)
   const armed = Boolean(dragging) && !isSource
-  const lit = armed && over
+  const lit = armed && target === zoneKey
 
   // Escape cancels the gesture: the in-flight key is cleared (see the
   // keydown hook in the roster pane), so every zone disarms at once and a
-  // drop that still lands is refused below. Reset the hover so the next drag
-  // starts clean.
+  // drop that still lands is refused below. Clear the target so the next
+  // drag starts clean.
   useEffect(() => {
-    if (!dragging) {
-      setOver(false)
+    if (!dragging && $sectionDropTarget.get() === zoneKey) {
+      $sectionDropTarget.set(null)
     }
-  }, [dragging])
+  }, [dragging, zoneKey])
 
-  const accepts = (event: DragEvent) => armed && event.dataTransfer.types.includes(BOT_DRAG_MIME)
+  // The innermost zone CLAIMS any bot drag over it — even as the source, so a
+  // drag hovering a bot's own section is a no-drop there rather than bubbling
+  // up and offering to move the bot to the parent section.
+  const claim = (event: DragEvent) => {
+    if (!dragging || !event.dataTransfer.types.includes(BOT_DRAG_MIME)) {
+      return
+    }
+
+    event.stopPropagation()
+
+    if (!armed) {
+      if ($sectionDropTarget.get() !== null) {
+        $sectionDropTarget.set(null)
+      }
+
+      return
+    }
+
+    // preventDefault is what MAKES this a drop target — without it the
+    // browser refuses the drop and the cursor stays "no entry".
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+
+    if ($sectionDropTarget.get() !== zoneKey) {
+      $sectionDropTarget.set(zoneKey)
+    }
+  }
 
   return (
     <div
@@ -293,36 +408,25 @@ export function SectionDropZone({ children, isSource, nested, onDropBot }: Secti
       )}
       data-drop-over={lit ? 'true' : undefined}
       data-slot="bots-section"
-      onDragEnter={event => {
-        if (accepts(event)) {
-          event.preventDefault()
-          setOver(true)
-        }
-      }}
+      onDragEnter={claim}
       onDragLeave={event => {
         // Only clear when the pointer leaves the BLOCK, not when it crosses
         // between the rows inside it — dragleave fires on every child
         // boundary, which otherwise strobes the highlight.
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-          setOver(false)
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null) && $sectionDropTarget.get() === zoneKey) {
+          $sectionDropTarget.set(null)
         }
       }}
-      onDragOver={event => {
-        if (!accepts(event)) {
+      onDragOver={claim}
+      onDrop={event => {
+        if (!event.dataTransfer.types.includes(BOT_DRAG_MIME)) {
           return
         }
 
-        // preventDefault is what MAKES this a drop target — without it the
-        // browser refuses the drop and the cursor stays "no entry".
-        event.preventDefault()
-        event.dataTransfer.dropEffect = 'move'
-
-        if (!over) {
-          setOver(true)
-        }
-      }}
-      onDrop={event => {
-        setOver(false)
+        // Handled here, by the innermost block: an enclosing section must not
+        // refile the bot a second time.
+        event.stopPropagation()
+        $sectionDropTarget.set(null)
         // The dropped row remounts under its new section, so its own dragend
         // never reaches the new node — clear the in-flight state here or the
         // row stays faded after a successful drop.

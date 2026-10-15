@@ -30,14 +30,25 @@ import { getPluginCtx } from './shared'
 import type { BotMeta, GroupChat, RosterRow } from './types'
 
 /** The one section-name dialog's state: New section (optionally filing the
- *  bot or group whose menu opened it) or Rename. */
+ *  bot or group whose menu opened it, or nested under `parentId`) or Rename. */
 export type SectionDialogState =
-  null | { bot?: RosterRow; group?: string; mode: 'create' } | { id: string; mode: 'rename'; name: string }
+  | null
+  | { bot?: RosterRow; group?: string; mode: 'create'; parentId?: string }
+  | { id: string; mode: 'rename'; name: string }
 
 export const UNASSIGNED_SECTION_KEY = 'section:unassigned'
 export const BOT_SECTIONS_KEY = 'bot-sections-v1'
 
 export interface BotSection {
+  id: string
+  name: string
+  /** The section this one is nested under. Absent at the top level, so a flat
+   *  list persists exactly as it did before nesting existed. */
+  parentId?: string
+}
+
+/** One link of a member's ancestry (`BotMeta.sectionParents`), root first. */
+export interface SectionAncestor {
   id: string
   name: string
 }
@@ -56,15 +67,29 @@ export const $botSections = atom<BotSection[]>([])
  *  clear from expiring a later delete of the same id. */
 const pendingSectionDeletes = new Map<string, symbol>()
 
+/** Sections whose members this desktop is re-stamping after a rename or a
+ *  re-parent. Until every write lands, the members still carry the OLD name
+ *  and ancestry, and adoptBotSectionsFromMeta must not read those back as an
+ *  edit made on another desktop and undo the user's change. Counted, because
+ *  two quick edits of one section overlap. */
+const pendingRestamps = new Map<string, number>()
+
 /** Test seam. */
 export function resetBotSectionDeletes(): void {
   pendingSectionDeletes.clear()
+  pendingRestamps.clear()
 }
 
 /** Roster key of the bot in flight during a drag. Session-only, and cleared
  *  on dragend even when the drop lands outside any target — a stuck
  *  "dragging" state outlives the gesture and reads as a broken pane. */
 export const $draggingBot = atom<null | string>(null)
+
+/** The ONE section block lit as the drop target. Sections nest, so the block
+ *  under the pointer sits inside its parent's block too; the innermost one
+ *  claims the drag (and stops it bubbling), and this keeps the parent from
+ *  staying lit after the pointer moved into the child. Session-only. */
+export const $sectionDropTarget = atom<null | string>(null)
 
 export function normalizeBotSections(value: unknown): BotSection[] {
   if (!Array.isArray(value)) {
@@ -83,10 +108,103 @@ export function normalizeBotSections(value: unknown): BotSection[] {
     }
 
     seen.add(id)
-    out.push({ id, name })
+    const parentId = String((entry as BotSection)?.parentId || '').trim()
+
+    out.push(parentId ? { id, name, parentId } : { id, name })
+  }
+
+  // A parent that no longer exists, or a loop (two desktops each nesting one
+  // section under the other), would hide those sections from the tree
+  // entirely; lift them to the top level instead.
+  const parentOf = new Map(out.map(s => [s.id, s.parentId && seen.has(s.parentId) ? s.parentId : null]))
+
+  for (const section of out) {
+    const visited = new Set([section.id])
+
+    for (let up = parentOf.get(section.id); up; up = parentOf.get(up)) {
+      if (visited.has(up)) {
+        parentOf.set(section.id, null)
+
+        break
+      }
+
+      visited.add(up)
+    }
+  }
+
+  return out.map(({ id, name }) => {
+    const parentId = parentOf.get(id)
+
+    return parentId ? { id, name, parentId } : { id, name }
+  })
+}
+
+/** The sections above `id`, root first — empty at the top level. */
+export function sectionAncestors(id: string, sections: BotSection[]): SectionAncestor[] {
+  const byId = new Map(sections.map(s => [s.id, s]))
+  const chain: SectionAncestor[] = []
+  const visited = new Set([id])
+
+  for (let up = byId.get(id)?.parentId; up && !visited.has(up); up = byId.get(up)?.parentId) {
+    const parent = byId.get(up)
+
+    if (!parent) {
+      break
+    }
+
+    visited.add(up)
+    chain.unshift({ id: parent.id, name: parent.name })
+  }
+
+  return chain
+}
+
+/** Every section nested anywhere under `id` (not `id` itself). */
+export function sectionDescendantIds(id: string, sections: BotSection[]): Set<string> {
+  const out = new Set<string>()
+  const queue = [id]
+
+  while (queue.length) {
+    const current = queue.shift()!
+
+    for (const section of sections) {
+      if (section.parentId === current && !out.has(section.id) && section.id !== id) {
+        out.add(section.id)
+        queue.push(section.id)
+      }
+    }
   }
 
   return out
+}
+
+/** The tree as a depth-first list in display order, for menus that list every
+ *  section with indentation. */
+export function flattenSectionTree(sections: BotSection[]): { depth: number; section: BotSection }[] {
+  const list = normalizeBotSections(sections)
+  const out: { depth: number; section: BotSection }[] = []
+
+  const walk = (parentId: null | string, depth: number) => {
+    for (const section of list) {
+      if ((section.parentId || null) === parentId) {
+        out.push({ depth, section })
+        walk(section.id, depth + 1)
+      }
+    }
+  }
+
+  walk(null, 0)
+
+  return out
+}
+
+/** Position among siblings (same parent), which is what Move up / Move down
+ *  reorder. */
+export function sectionSiblingPosition(id: string, sections: BotSection[]): { count: number; index: number } {
+  const parentId = sections.find(s => s.id === id)?.parentId || null
+  const siblings = sections.filter(s => (s.parentId || null) === parentId)
+
+  return { count: siblings.length, index: siblings.findIndex(s => s.id === id) }
 }
 
 function persistBotSections(next: BotSection[]): void {
@@ -113,21 +231,55 @@ function newSectionId(): string {
   return `sec-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
 }
 
-/** Create a section and file `bots` into it. Returns the new section, or
- *  null when the name is blank. */
-export function createBotSection(name: string, bots: RosterRow[] = []): BotSection | null {
+/** Create a section — nested under `parentId` when given — and file `bots`
+ *  into it. Returns the new section, or null when the name is blank. */
+export function createBotSection(name: string, bots: RosterRow[] = [], parentId?: null | string): BotSection | null {
   const clean = String(name || '').trim()
 
   if (!clean) {
     return null
   }
 
-  const section: BotSection = { id: newSectionId(), name: clean }
+  const list = $botSections.get()
 
-  persistBotSections([...$botSections.get(), section])
+  const section: BotSection =
+    parentId && list.some(s => s.id === parentId)
+      ? { id: newSectionId(), name: clean, parentId }
+      : { id: newSectionId(), name: clean }
+
+  persistBotSections([...list, section])
   void moveBotsToSection(bots, section.id)
 
   return section
+}
+
+/** Re-stamp the members of `ids` (in that order), whose carried name or
+ *  ancestry just changed, so other desktops rebuild the same tree. */
+async function restampSections(ids: Iterable<string>, roster: RosterRow[]): Promise<void> {
+  const list = [...ids]
+
+  for (const id of list) {
+    pendingRestamps.set(id, (pendingRestamps.get(id) || 0) + 1)
+  }
+
+  try {
+    for (const id of list) {
+      await moveBotsToSection(
+        (roster || []).filter(bot => botSectionId(bot, $botMeta.get()) === id),
+        id
+      )
+    }
+  } finally {
+    for (const id of list) {
+      const left = (pendingRestamps.get(id) || 1) - 1
+
+      if (left) {
+        pendingRestamps.set(id, left)
+      } else {
+        pendingRestamps.delete(id)
+      }
+    }
+  }
 }
 
 export function renameBotSection(id: string, name: string, roster: RosterRow[] = []): void {
@@ -137,13 +289,40 @@ export function renameBotSection(id: string, name: string, roster: RosterRow[] =
     return
   }
 
-  persistBotSections($botSections.get().map(s => (s.id === id ? { ...s, name: clean } : s)))
+  const list = $botSections.get().map(s => (s.id === id ? { ...s, name: clean } : s))
+
+  persistBotSections(list)
   // Members carry the name with their membership (see moveBotsToSection), so
   // a rename re-stamps them — that is how the new name reaches other desktops.
-  void moveBotsToSection(
-    (roster || []).filter(bot => botSectionId(bot, $botMeta.get()) === id),
-    id
-  )
+  // Members of nested sections carry it in their ancestry, so they re-stamp too.
+  void restampSections([id, ...sectionDescendantIds(id, list)], roster)
+}
+
+/**
+ * Nest section `id` under `parentId` (`null` lifts it to the top level). It
+ * lands last among its new siblings, and its whole subtree comes with it.
+ * Refused — returns false — when `parentId` is the section itself or one of
+ * its own descendants, which would detach the subtree from the tree.
+ */
+export function setBotSectionParent(id: string, parentId: null | string, roster: RosterRow[] = []): boolean {
+  const list = $botSections.get()
+  const section = list.find(s => s.id === id)
+  const descendants = sectionDescendantIds(id, list)
+
+  if (
+    !section ||
+    (parentId && (parentId === id || descendants.has(parentId) || !list.some(s => s.id === parentId))) ||
+    (section.parentId || null) === (parentId || null)
+  ) {
+    return false
+  }
+
+  const moved: BotSection = parentId ? { ...section, parentId } : { id: section.id, name: section.name }
+
+  persistBotSections([...list.filter(s => s.id !== id), moved])
+  void restampSections([id, ...descendants], roster)
+
+  return true
 }
 
 /**
@@ -158,36 +337,89 @@ export function renameBotSection(id: string, name: string, roster: RosterRow[] =
  */
 export function adoptBotSectionsFromMeta(roster: RosterRow[], metaByName: Record<string, BotMeta>): void {
   const names = new Map<string, Set<string>>()
+  // Parent votes: '' is "top level". Only members that carry an ancestry
+  // field vote — a member filed before nesting existed says nothing about it.
+  const parents = new Map<string, Set<string>>()
+
+  const note = (id: string, name: string, parentId?: string) => {
+    names.set(id, (names.get(id) || new Set()).add(name))
+
+    if (parentId !== undefined) {
+      parents.set(id, (parents.get(id) || new Set()).add(parentId))
+    }
+  }
 
   for (const bot of roster || []) {
     const meta = bot ? botRosterMeta(bot, metaByName) : null
     const id = meta?.sectionId ? String(meta.sectionId) : null
     const name = String(meta?.sectionName || '').trim()
 
-    if (id && name) {
-      names.set(id, (names.get(id) || new Set()).add(name))
+    if (!id || !name) {
+      continue
     }
+
+    const carried = meta?.sectionParents
+    const chain = normalizeSectionAncestors(carried)
+
+    chain.forEach((link, i) => note(link.id, link.name, i ? chain[i - 1]!.id : ''))
+    note(id, name, chain.length ? chain.at(-1)!.id : carried === null ? '' : undefined)
   }
 
-  const agreed = (id: string): null | string => {
-    const set = names.get(id)
+  const agreed = (votes: Map<string, Set<string>>, id: string): null | string => {
+    const set = votes.get(id)
 
     return set?.size === 1 ? [...set][0]! : null
   }
 
   const local = $botSections.get()
   const known = new Set(local.map(s => s.id))
-  const renamed = local.map(s => ({ ...s, name: agreed(s.id) ?? s.name }))
+
+  // A section whose members this desktop is still re-stamping keeps its local
+  // name and parent: the members' stale values are the change in flight, not
+  // a change made elsewhere.
+  const settled = (id: string) => !pendingRestamps.has(id)
+
+  const withParent = (section: BotSection, parentId: null | string): BotSection =>
+    parentId ? { ...section, parentId } : { id: section.id, name: section.name }
+
+  const updated = local.map(s => {
+    if (!settled(s.id)) {
+      return s
+    }
+
+    const parent = agreed(parents, s.id)
+
+    return withParent({ ...s, name: agreed(names, s.id) ?? s.name }, parent === null ? s.parentId || null : parent)
+  })
 
   const adopted = [...names.keys()]
     .filter(id => !known.has(id) && !pendingSectionDeletes.has(id))
-    .map(id => ({ id, name: [...names.get(id)!][0]! }))
+    .map(id => withParent({ id, name: [...names.get(id)!][0]! }, [...(parents.get(id) || [])][0] || null))
 
-  const next = [...renamed, ...adopted]
+  const next = normalizeBotSections([...updated, ...adopted])
 
-  if (next.some((s, i) => s.id !== local[i]?.id || s.name !== local[i]?.name)) {
+  if (
+    next.length !== local.length ||
+    next.some(
+      (s, i) =>
+        s.id !== local[i]?.id || s.name !== local[i]?.name || (s.parentId || null) !== (local[i]?.parentId || null)
+    )
+  ) {
     persistBotSections(next)
   }
+}
+
+function normalizeSectionAncestors(value: unknown): SectionAncestor[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .map(link => ({
+      id: String((link as SectionAncestor)?.id || '').trim(),
+      name: String((link as SectionAncestor)?.name || '').trim()
+    }))
+    .filter(link => link.id && link.name)
 }
 
 /**
@@ -201,14 +433,21 @@ export function adoptBotSectionsFromMeta(roster: RosterRow[], metaByName: Record
  * knows are left alone — there is no name to give them.
  */
 export function backfillBotSectionNames(roster: RosterRow[], metaByName: Record<string, BotMeta>): RosterRow[] {
-  const known = new Set($botSections.get().map(s => s.id))
+  const list = $botSections.get()
+  const known = new Set(list.map(s => s.id))
   const bySection = new Map<string, RosterRow[]>()
 
   for (const bot of roster || []) {
     const meta = bot ? botRosterMeta(bot, metaByName) : null
     const id = meta?.sectionId ? String(meta.sectionId) : null
 
-    if (id && known.has(id) && !String(meta?.sectionName || '').trim()) {
+    // A member of a NESTED section filed without its ancestry (by a desktop
+    // that predates nesting) needs it stamped for the same reason it needs
+    // the name: so other desktops can rebuild where the section sits.
+    const missingAncestry =
+      Boolean(id) && !Array.isArray(meta?.sectionParents) && sectionAncestors(id!, list).length > 0
+
+    if (id && known.has(id) && (!String(meta?.sectionName || '').trim() || missingAncestry)) {
       bySection.set(id, [...(bySection.get(id) || []), bot])
     }
   }
@@ -222,25 +461,43 @@ export function backfillBotSectionNames(roster: RosterRow[], metaByName: Record<
 
 /**
  * Delete the section only. Its members are not deleted and not hidden — they
- * fall back to Unassigned, which is the whole reason membership lives on the
- * bot rather than on the section. Returns an undo that puts the section back
- * in its slot and refiles the same bots, so the delete needs no confirmation.
+ * move up to the section's parent (Unassigned for a top-level section), which
+ * is the whole reason membership lives on the bot rather than on the section.
+ * Its child sections move up a level the same way. Returns an undo that puts
+ * the section back in its slot, re-nests its children and refiles the same
+ * bots, so the delete needs no confirmation.
  */
 export function deleteBotSection(id: string, roster: RosterRow[] = []): { members: RosterRow[]; undo: () => void } {
   const list = $botSections.get()
   const index = list.findIndex(s => s.id === id)
   const section = list[index]
+  const parentId = section?.parentId || null
   const members = (roster || []).filter(bot => botSectionId(bot, $botMeta.get()) === id)
+  const children = list.filter(s => s.parentId === id).map(s => s.id)
+  const descendants = sectionDescendantIds(id, list)
+
+  const reparent = (sections: BotSection[], ids: string[], to: null | string) =>
+    sections.map(s => (ids.includes(s.id) ? (to ? { ...s, parentId: to } : { id: s.id, name: s.name }) : s))
 
   const token = Symbol(id)
 
   pendingSectionDeletes.set(id, token)
-  persistBotSections(list.filter(s => s.id !== id))
-  void moveBotsToSection(members, null).finally(() => {
-    if (pendingSectionDeletes.get(id) === token) {
-      pendingSectionDeletes.delete(id)
-    }
-  })
+  persistBotSections(
+    reparent(
+      list.filter(s => s.id !== id),
+      children,
+      parentId
+    )
+  )
+  // The descendants' members carry the deleted section in their ancestry;
+  // until they are re-stamped it must not be adopted back from them.
+  void moveBotsToSection(members, parentId)
+    .then(() => restampSections(descendants, roster))
+    .finally(() => {
+      if (pendingSectionDeletes.get(id) === token) {
+        pendingSectionDeletes.delete(id)
+      }
+    })
 
   return {
     members,
@@ -253,25 +510,32 @@ export function deleteBotSection(id: string, roster: RosterRow[] = []): { member
       const current = $botSections.get().filter(s => s.id !== id)
 
       current.splice(Math.min(index, current.length), 0, section)
-      persistBotSections(current)
-      void moveBotsToSection(members, id)
+      persistBotSections(reparent(current, children, id))
+      void moveBotsToSection(members, id).then(() => restampSections(descendants, roster))
     }
   }
 }
 
+/** Swap `id` with its neighbour among its siblings (`delta` -1 / +1). */
 export function moveBotSection(id: string, delta: number): void {
   const list = $botSections.get()
-  const from = list.findIndex(s => s.id === id)
-  const to = from + delta
+  const section = list.find(s => s.id === id)
 
-  if (from < 0 || to < 0 || to >= list.length) {
+  if (!section) {
+    return
+  }
+
+  const siblings = list.filter(s => (s.parentId || null) === (section.parentId || null))
+  const other = siblings[siblings.indexOf(section) + delta]
+
+  if (!other) {
     return
   }
 
   const next = list.slice()
-  const [moved] = next.splice(from, 1)
 
-  next.splice(to, 0, moved!)
+  next[list.indexOf(section)] = other
+  next[list.indexOf(other)] = section
   persistBotSections(next)
 }
 
@@ -285,6 +549,7 @@ export function moveBotSection(id: string, delta: number): void {
  */
 export async function moveBotsToSection(bots: RosterRow[], sectionId: null | string): Promise<void> {
   const sectionName = (sectionId && $botSections.get().find(s => s.id === sectionId)?.name) || null
+  const ancestors = sectionId ? sectionAncestors(sectionId, $botSections.get()) : []
 
   for (const bot of bots || []) {
     if (!bot) {
@@ -299,9 +564,21 @@ export async function moveBotsToSection(bots: RosterRow[], sectionId: null | str
     }
 
     const current = botRosterMeta(bot, $botMeta.get())
+    const carried = normalizeSectionAncestors(current?.sectionParents)
+    // Ancestry is written only when there is some to write or some to clear,
+    // so filing into a top-level section writes exactly what it always did.
+    const ancestryChanged = JSON.stringify(carried) !== JSON.stringify(ancestors)
 
-    if (botSectionId(bot, $botMeta.get()) !== (sectionId || null) || (current?.sectionName || null) !== sectionName) {
-      await saveBotMeta(bot, { sectionId: sectionId || null, sectionName })
+    if (
+      botSectionId(bot, $botMeta.get()) !== (sectionId || null) ||
+      (current?.sectionName || null) !== sectionName ||
+      ancestryChanged
+    ) {
+      await saveBotMeta(bot, {
+        sectionId: sectionId || null,
+        sectionName,
+        ...(ancestors.length || carried.length ? { sectionParents: ancestors.length ? ancestors : null } : {})
+      })
     }
   }
 }
@@ -408,6 +685,37 @@ export function groupRowsBySection<TRow extends { bot?: RosterRow } | RosterRow>
   blocks.push({ id: null, key: UNASSIGNED_SECTION_KEY, name: '', rows: loose })
 
   return blocks
+}
+
+export interface SectionTreeNode<TRow> {
+  block: SectionBlock<TRow>
+  children: SectionTreeNode<TRow>[]
+  /** Rows in this section and every section nested under it — the heading's
+   *  count, so a collapsed parent still says how many bots it holds. */
+  total: number
+}
+
+/**
+ * Arrange `groupRowsBySection`'s flat blocks into the section tree (sibling
+ * order as stored), with Unassigned kept last at the top level. Pure.
+ */
+export function nestSectionBlocks<TRow>(blocks: SectionBlock<TRow>[], sections: unknown): SectionTreeNode<TRow>[] {
+  const list = normalizeBotSections(sections)
+  const byId = new Map(blocks.filter(b => b.id).map(b => [b.id!, b]))
+
+  const build = (parentId: null | string): SectionTreeNode<TRow>[] =>
+    list
+      .filter(s => (s.parentId || null) === parentId && byId.has(s.id))
+      .map(s => {
+        const block = byId.get(s.id)!
+        const children = build(s.id)
+
+        return { block, children, total: block.rows.length + children.reduce((n, c) => n + c.total, 0) }
+      })
+
+  const unassigned = blocks.find(b => !b.id)
+
+  return [...build(null), ...(unassigned ? [{ block: unassigned, children: [], total: unassigned.rows.length }] : [])]
 }
 
 // ── drag and drop ────────────────────────────────────────────────────────────
