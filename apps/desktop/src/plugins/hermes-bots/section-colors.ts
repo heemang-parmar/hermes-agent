@@ -18,6 +18,7 @@ import type { BotSection } from './user-sections'
 
 export const SECTION_PALETTE = {
   blue: '#3b72d9',
+  navy: '#26408c',
   green: '#23a26d',
   amber: '#d08a16',
   rose: '#d4497c',

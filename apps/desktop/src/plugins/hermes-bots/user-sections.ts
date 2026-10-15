@@ -48,6 +48,16 @@ export interface BotSection {
   /** A palette key (`section-colors.ts`) the user picked for a top-level
    *  section. Absent means "automatic" — the colour follows its position. */
   color?: string
+  /** A top-level section shown as a shared department: below the companies,
+   *  past a divider, in the roster; as a tile panel in the org chart. */
+  shared?: boolean
+}
+
+/** A top-level section's look, carried by every member of its subtree
+ *  (`BotMeta.sectionRootStyle`) so another desktop draws it the same. */
+export interface SectionRootStyle {
+  color?: string
+  shared?: boolean
 }
 
 /** One link of a member's ancestry (`BotMeta.sectionParents`), root first. */
@@ -113,8 +123,15 @@ export function normalizeBotSections(value: unknown): BotSection[] {
     seen.add(id)
     const parentId = String((entry as BotSection)?.parentId || '').trim()
     const color = String((entry as BotSection)?.color || '').trim()
+    const shared = (entry as BotSection)?.shared === true
 
-    out.push({ id, name, ...(parentId ? { parentId } : {}), ...(color ? { color } : {}) })
+    out.push({
+      id,
+      name,
+      ...(parentId ? { parentId } : {}),
+      ...(color ? { color } : {}),
+      ...(shared ? { shared } : {})
+    })
   }
 
   // A parent that no longer exists, or a loop (two desktops each nesting one
@@ -136,26 +153,68 @@ export function normalizeBotSections(value: unknown): BotSection[] {
     }
   }
 
-  return out.map(({ color, id, name }) => {
+  return out.map(({ color, id, name, shared }) => {
     const parentId = parentOf.get(id)
 
-    return { id, name, ...(parentId ? { parentId } : {}), ...(color ? { color } : {}) }
+    return { id, name, ...(parentId ? { parentId } : {}), ...(color ? { color } : {}), ...(shared ? { shared } : {}) }
   })
 }
 
-/** Set (or, with `null`, reset to automatic) a section's colour. */
-export function setBotSectionColor(id: string, color: null | string): void {
-  persistBotSections(
-    $botSections.get().map(section => {
-      if (section.id !== id) {
-        return section
-      }
+/** `section` with its look replaced by `style` (absent keys removed). */
+function withStyle(section: BotSection, style: SectionRootStyle): BotSection {
+  const { color: _color, shared: _shared, ...rest } = section
 
-      const { color: _previous, ...rest } = section
+  return { ...rest, ...(style.color ? { color: style.color } : {}), ...(style.shared ? { shared: true } : {}) }
+}
 
-      return color ? { ...rest, color } : rest
-    })
-  )
+/** The explicit look of the top-level section above (or at) `id`; null when
+ *  it has none, which is what a member carries for an automatic section. */
+export function sectionRootStyle(id: string, sections: BotSection[]): null | SectionRootStyle {
+  const root = sectionAncestors(id, sections)[0]?.id ?? id
+  const section = sections.find(s => s.id === root)
+
+  if (!section || (!section.color && !section.shared)) {
+    return null
+  }
+
+  return { ...(section.color ? { color: section.color } : {}), ...(section.shared ? { shared: true } : {}) }
+}
+
+function normalizeRootStyle(value: unknown): null | SectionRootStyle {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const color = String((value as SectionRootStyle).color || '').trim()
+  const shared = (value as SectionRootStyle).shared === true
+
+  return color || shared ? { ...(color ? { color } : {}), ...(shared ? { shared } : {}) } : null
+}
+
+/** Change a top-level section's look and re-stamp its subtree's members, so
+ *  the look reaches other desktops the way a rename does. */
+function restyleBotSection(id: string, patch: SectionRootStyle, roster: RosterRow[]): void {
+  const list = $botSections.get()
+  const section = list.find(s => s.id === id)
+
+  if (!section) {
+    return
+  }
+
+  const next = list.map(s => (s.id === id ? withStyle(s, { color: s.color, shared: s.shared, ...patch }) : s))
+
+  persistBotSections(next)
+  void restampSections([id, ...sectionDescendantIds(id, next)], roster)
+}
+
+/** Set (or, with `null`, reset to automatic) a top-level section's colour. */
+export function setBotSectionColor(id: string, color: null | string, roster: RosterRow[] = []): void {
+  restyleBotSection(id, { color: color || undefined }, roster)
+}
+
+/** Show a top-level section as a shared department (below the divider). */
+export function setBotSectionShared(id: string, shared: boolean, roster: RosterRow[] = []): void {
+  restyleBotSection(id, { shared: shared || undefined }, roster)
 }
 
 /** `section` lifted to the top level: no `parentId` key, everything else kept. */
@@ -366,6 +425,9 @@ export function adoptBotSectionsFromMeta(roster: RosterRow[], metaByName: Record
   // Parent votes: '' is "top level". Only members that carry an ancestry
   // field vote — a member filed before nesting existed says nothing about it.
   const parents = new Map<string, Set<string>>()
+  // Root look votes (JSON of the carried style; 'null' is "automatic"). Only
+  // members that carry the field vote, on their subtree's ROOT.
+  const styles = new Map<string, Set<string>>()
 
   const note = (id: string, name: string, parentId?: string) => {
     names.set(id, (names.get(id) || new Set()).add(name))
@@ -389,6 +451,12 @@ export function adoptBotSectionsFromMeta(roster: RosterRow[], metaByName: Record
 
     chain.forEach((link, i) => note(link.id, link.name, i ? chain[i - 1]!.id : ''))
     note(id, name, chain.length ? chain.at(-1)!.id : carried === null ? '' : undefined)
+
+    if (meta && 'sectionRootStyle' in meta) {
+      const root = chain[0]?.id ?? id
+
+      styles.set(root, (styles.get(root) || new Set()).add(JSON.stringify(normalizeRootStyle(meta.sectionRootStyle))))
+    }
   }
 
   const agreed = (votes: Map<string, Set<string>>, id: string): null | string => {
@@ -408,6 +476,13 @@ export function adoptBotSectionsFromMeta(roster: RosterRow[], metaByName: Record
   const withParent = (section: BotSection, parentId: null | string): BotSection =>
     parentId ? { ...section, parentId } : topLevel(section)
 
+  // Apply the agreed root look, if members agree on one.
+  const styled = (section: BotSection): BotSection => {
+    const vote = agreed(styles, section.id)
+
+    return vote === null ? section : withStyle(section, (JSON.parse(vote) as null | SectionRootStyle) ?? {})
+  }
+
   const updated = local.map(s => {
     if (!settled(s.id)) {
       return s
@@ -415,12 +490,14 @@ export function adoptBotSectionsFromMeta(roster: RosterRow[], metaByName: Record
 
     const parent = agreed(parents, s.id)
 
-    return withParent({ ...s, name: agreed(names, s.id) ?? s.name }, parent === null ? s.parentId || null : parent)
+    return styled(
+      withParent({ ...s, name: agreed(names, s.id) ?? s.name }, parent === null ? s.parentId || null : parent)
+    )
   })
 
   const adopted = [...names.keys()]
     .filter(id => !known.has(id) && !pendingSectionDeletes.has(id))
-    .map(id => withParent({ id, name: [...names.get(id)!][0]! }, [...(parents.get(id) || [])][0] || null))
+    .map(id => styled(withParent({ id, name: [...names.get(id)!][0]! }, [...(parents.get(id) || [])][0] || null)))
 
   const next = normalizeBotSections([...updated, ...adopted])
 
@@ -428,7 +505,11 @@ export function adoptBotSectionsFromMeta(roster: RosterRow[], metaByName: Record
     next.length !== local.length ||
     next.some(
       (s, i) =>
-        s.id !== local[i]?.id || s.name !== local[i]?.name || (s.parentId || null) !== (local[i]?.parentId || null)
+        s.id !== local[i]?.id ||
+        s.name !== local[i]?.name ||
+        (s.parentId || null) !== (local[i]?.parentId || null) ||
+        (s.color || null) !== (local[i]?.color || null) ||
+        Boolean(s.shared) !== Boolean(local[i]?.shared)
     )
   ) {
     persistBotSections(next)
@@ -576,6 +657,7 @@ export function moveBotSection(id: string, delta: number): void {
 export async function moveBotsToSection(bots: RosterRow[], sectionId: null | string): Promise<void> {
   const sectionName = (sectionId && $botSections.get().find(s => s.id === sectionId)?.name) || null
   const ancestors = sectionId ? sectionAncestors(sectionId, $botSections.get()) : []
+  const style = sectionId ? sectionRootStyle(sectionId, $botSections.get()) : null
 
   for (const bot of bots || []) {
     if (!bot) {
@@ -594,16 +676,22 @@ export async function moveBotsToSection(bots: RosterRow[], sectionId: null | str
     // Ancestry is written only when there is some to write or some to clear,
     // so filing into a top-level section writes exactly what it always did.
     const ancestryChanged = JSON.stringify(carried) !== JSON.stringify(ancestors)
+    // The root's look, on the same terms: written when there is one to write
+    // or one to clear.
+    const carriedStyle = normalizeRootStyle(current?.sectionRootStyle)
+    const styleChanged = JSON.stringify(carriedStyle) !== JSON.stringify(style)
 
     if (
       botSectionId(bot, $botMeta.get()) !== (sectionId || null) ||
       (current?.sectionName || null) !== sectionName ||
-      ancestryChanged
+      ancestryChanged ||
+      styleChanged
     ) {
       await saveBotMeta(bot, {
         sectionId: sectionId || null,
         sectionName,
-        ...(ancestors.length || carried.length ? { sectionParents: ancestors.length ? ancestors : null } : {})
+        ...(ancestors.length || carried.length ? { sectionParents: ancestors.length ? ancestors : null } : {}),
+        ...(style || carriedStyle ? { sectionRootStyle: style } : {})
       })
     }
   }

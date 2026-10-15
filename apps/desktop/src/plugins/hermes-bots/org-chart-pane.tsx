@@ -39,7 +39,8 @@ const MIN_SCALE = 0.25
 const MAX_SCALE = 2
 const clampScale = (scale: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale))
 
-/** A top-level section this big is a department panel, not a company column. */
+/** With no section marked "shared department", a top-level section this big
+ *  is drawn as a department panel rather than a company column. */
 const DEPARTMENT_MIN_BOTS = 8
 
 const SERIF: CSSProperties = { fontFamily: 'ui-serif, "New York", Georgia, "Times New Roman", serif' }
@@ -383,8 +384,15 @@ function Organization({
 
   // The founder's office leads only when there is something under it.
   const [head, ...rest] = roots.length > 1 ? roots : [undefined, ...roots]
-  const companies = rest.filter(node => node && node.total < DEPARTMENT_MIN_BOTS) as OrgChartNode[]
-  const departments = rest.filter(node => node && node.total >= DEPARTMENT_MIN_BOTS) as OrgChartNode[]
+  // The roster's "shared department" mark decides; the size rule is only the
+  // fallback for a roster that has never marked one.
+  const anyMarked = sections.some(section => section.shared)
+
+  const isDepartment = (node: OrgChartNode) =>
+    anyMarked ? Boolean(node.section.shared) : node.total >= DEPARTMENT_MIN_BOTS
+
+  const companies = rest.filter(node => node && !isDepartment(node)) as OrgChartNode[]
+  const departments = rest.filter(node => node && isDepartment(node)) as OrgChartNode[]
 
   return (
     <div className="flex min-w-[60rem] flex-col items-stretch gap-8 p-6">

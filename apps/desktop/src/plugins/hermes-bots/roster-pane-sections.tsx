@@ -24,6 +24,7 @@ import {
   type SectionTreeNode,
   setBotSectionColor,
   setBotSectionParent,
+  setBotSectionShared,
   UNASSIGNED_SECTION_KEY
 } from './user-sections'
 import { SectionDropZone, type SectionMoveTarget, UserSectionHeader } from './user-sections-ui'
@@ -164,13 +165,15 @@ export function rosterSectionRenderers({
             id={block.id}
             moveTargets={block.id ? moveTargetsFor(block.id) : []}
             name={block.name}
-            onColor={record && !record.parentId ? key => setBotSectionColor(record.id, key) : undefined}
+            onColor={record && !record.parentId ? key => setBotSectionColor(record.id, key, roster) : undefined}
             onDelete={() => block.id && removeSection(block.id)}
             onMove={delta => block.id && moveBotSection(block.id, delta)}
             onNewSubsection={() => block.id && setSectionDialog({ mode: 'create', parentId: block.id })}
             onRename={() => block.id && setSectionDialog({ id: block.id, mode: 'rename', name: block.name })}
             onReparent={parentId => block.id && setBotSectionParent(block.id, parentId, roster)}
+            onShared={record && !record.parentId ? shared => setBotSectionShared(record.id, shared, roster) : undefined}
             onToggle={() => toggleRosterSection(key)}
+            shared={Boolean(record?.shared)}
           />
           {collapsed ? null : block.rows.length || children.length ? (
             <div className="grid min-w-0 gap-0.5">
@@ -188,7 +191,30 @@ export function rosterSectionRenderers({
       )
     }
 
-    return tree.filter(shown).map(node => renderNode(node, 0))
+    // Companies first; shared departments below a divider, the same rule the
+    // Hidden group uses to set itself apart; Unassigned stays last.
+    const top = tree.filter(shown)
+
+    const isShared = (node: SectionTreeNode<UserSectionRow>) =>
+      Boolean(node.block.id && userSections.find(section => section.id === node.block.id)?.shared)
+
+    const regular = top.filter(node => node.block.id && !isShared(node))
+    const shared = top.filter(isShared)
+    const unassigned = top.filter(node => !node.block.id)
+
+    return [
+      ...regular.map(node => renderNode(node, 0)),
+      shared.length && regular.length ? (
+        <div
+          aria-hidden
+          className="mx-1 mt-1 border-t border-(--ui-stroke-tertiary)"
+          data-slot="bots-shared-divider"
+          key={`${keyPrefix}shared-divider`}
+        />
+      ) : null,
+      ...shared.map(node => renderNode(node, 0)),
+      ...unassigned.map(node => renderNode(node, 0))
+    ]
   }
 
   const renderGatewaySection = (section: ResolvedRosterGatewaySection) => {

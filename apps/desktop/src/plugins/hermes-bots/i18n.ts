@@ -182,6 +182,8 @@ type BotsMessages = {
     topLevel: string
     color: string
     colorAuto: string
+    markShared: string
+    unmarkShared: string
     colorName: (key: string) => string
     deleted: (name: string, count: number) => string
     undo: string
@@ -656,11 +658,14 @@ const en: BotsMessages = {
     topLevel: 'Top level',
     color: 'Color',
     colorAuto: 'Automatic',
+    markShared: 'Show as shared department',
+    unmarkShared: 'Show with companies',
     colorName: key =>
       (
         ({
           amber: 'Amber',
           blue: 'Blue',
+          navy: 'Navy',
           coral: 'Coral',
           green: 'Green',
           rose: 'Rose',
@@ -1128,11 +1133,14 @@ const ja: BotsMessages = {
     topLevel: '最上位',
     color: '色',
     colorAuto: '自動',
+    markShared: '共有部門として表示',
+    unmarkShared: '企業と一緒に表示',
     colorName: key =>
       (
         ({
           amber: 'アンバー',
           blue: 'ブルー',
+          navy: 'ネイビー',
           coral: 'コーラル',
           green: 'グリーン',
           rose: 'ローズ',
@@ -1596,11 +1604,14 @@ const zh: BotsMessages = {
     topLevel: '顶层',
     color: '颜色',
     colorAuto: '自动',
+    markShared: '显示为共享部门',
+    unmarkShared: '与公司一起显示',
     colorName: key =>
       (
         ({
           amber: '琥珀',
           blue: '蓝色',
+          navy: '藏青',
           coral: '珊瑚',
           green: '绿色',
           rose: '玫瑰',
@@ -2054,11 +2065,14 @@ const zhHant: BotsMessages = {
     topLevel: '最上層',
     color: '顏色',
     colorAuto: '自動',
+    markShared: '顯示為共享部門',
+    unmarkShared: '與公司一起顯示',
     colorName: key =>
       (
         ({
           amber: '琥珀',
           blue: '藍色',
+          navy: '藏青',
           coral: '珊瑚',
           green: '綠色',
           rose: '玫瑰',

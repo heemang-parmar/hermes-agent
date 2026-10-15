@@ -163,10 +163,13 @@ interface UserSectionHeaderProps {
   onDelete: () => void
   onColor?: (key: null | SectionColorKey) => void
   onMove: (delta: number) => void
+  /** Top-level sections only: toggle "shared department" (below the divider). */
+  onShared?: (shared: boolean) => void
   onNewSubsection?: () => void
   onRename: () => void
   onReparent?: (parentId: null | string) => void
   onToggle: () => void
+  shared?: boolean
 }
 
 export function UserSectionHeader({
@@ -185,7 +188,9 @@ export function UserSectionHeader({
   onNewSubsection,
   onRename,
   onReparent,
-  onToggle
+  onShared,
+  onToggle,
+  shared = false
 }: UserSectionHeaderProps) {
   const b = useBots()
   const { t } = useI18n()
@@ -212,7 +217,16 @@ export function UserSectionHeader({
     { icon: 'edit', label: b.sections.rename, onSelect: onRename },
     ...(onNewSubsection ? [{ icon: 'new-folder', label: b.sections.newSubsection, onSelect: onNewSubsection }] : []),
     { disabled: !canMoveUp, icon: 'arrow-up', label: b.sections.moveUp, onSelect: () => onMove(-1) },
-    { disabled: !canMoveDown, icon: 'arrow-down', label: b.sections.moveDown, onSelect: () => onMove(1) }
+    { disabled: !canMoveDown, icon: 'arrow-down', label: b.sections.moveDown, onSelect: () => onMove(1) },
+    ...(onShared
+      ? [
+          {
+            icon: shared ? 'arrow-small-up' : 'arrow-small-down',
+            label: shared ? b.sections.unmarkShared : b.sections.markShared,
+            onSelect: () => onShared(!shared)
+          }
+        ]
+      : [])
   ]
 
   // "Move into": the whole tree, indented, with the top level first. Sections

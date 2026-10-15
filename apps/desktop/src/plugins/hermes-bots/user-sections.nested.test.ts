@@ -56,7 +56,9 @@ import {
   normalizeBotSections,
   renameBotSection,
   resetBotSectionDeletes,
-  setBotSectionParent
+  setBotSectionColor,
+  setBotSectionParent,
+  setBotSectionShared
 } from './user-sections'
 
 const bot = (name: string) => ({ name }) as RosterRow
@@ -188,6 +190,36 @@ describe('nested user sections', () => {
 
     await vi.waitFor(() => expect($botMeta.get().rachit?.sectionId).toBe(brand.id))
     expect($botSections.get().find(s => s.id === prod.id)?.parentId).toBe(brand.id)
+  })
+
+  it('a top-level colour and shared mark ride on the subtree members and rebuild on another desktop', async () => {
+    const oil = createBotSection('One Infinity Labs', [bot('shiven')])!
+    const product = createBotSection('ProductOS', [bot('elio')], oil.id)!
+    const shared = createBotSection('Shared Departments', [bot('astra')])!
+    const roster = [bot('shiven'), bot('elio'), bot('astra')]
+
+    await vi.waitFor(() => expect(saveBotMeta).toHaveBeenCalledTimes(3))
+    // No look picked yet: nothing extra is written.
+    expect(saveBotMeta.mock.calls.every(([, patch]) => !('sectionRootStyle' in patch))).toBe(true)
+
+    setBotSectionColor(oil.id, 'navy', roster)
+    setBotSectionShared(shared.id, true, roster)
+
+    await vi.waitFor(() => expect($botMeta.get().elio?.sectionRootStyle).toEqual({ color: 'navy' }))
+    await vi.waitFor(() => expect($botMeta.get().astra?.sectionRootStyle).toEqual({ shared: true }))
+    expect($botMeta.get().shiven?.sectionRootStyle).toEqual({ color: 'navy' })
+
+    // Another desktop, which has none of these records, draws the same look.
+    const meta = $botMeta.get()
+
+    $botSections.set([])
+    adoptBotSectionsFromMeta(roster, meta)
+
+    const rebuilt = $botSections.get()
+
+    expect(rebuilt.find(s => s.id === oil.id)).toMatchObject({ color: 'navy' })
+    expect(rebuilt.find(s => s.id === product.id)?.color).toBeUndefined()
+    expect(rebuilt.find(s => s.id === shared.id)).toMatchObject({ shared: true })
   })
 
   it('move up / down reorders among siblings only', () => {

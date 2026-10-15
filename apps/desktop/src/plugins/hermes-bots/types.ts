@@ -77,6 +77,10 @@ export interface BotMeta {
    *  only for a nested section (null once lifted back to the top level), so
    *  another desktop rebuilds the same tree, not just a flat folder. */
   sectionParents?: null | { id: string; name: string }[]
+  /** The look of the member's top-level section (`{ color?, shared? }`),
+   *  written once the section has one, so another desktop draws the same
+   *  colours and the same shared-department divider. */
+  sectionRootStyle?: null | { color?: string; shared?: boolean }
   color?: string
   /** Set when the user has customized the avatar, so defaults stop applying. */
   custom?: boolean
