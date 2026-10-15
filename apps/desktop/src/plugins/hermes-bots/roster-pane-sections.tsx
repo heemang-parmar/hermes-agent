@@ -2,6 +2,7 @@ import { host } from '@hermes/plugin-sdk'
 import type { ReactNode } from 'react'
 
 import { botRosterKey } from './data'
+import { isBotPinned } from './hidden-bots'
 import type { useBots } from './i18n'
 import type { RosterGroupRow } from './roster-pane-derivation'
 import { GatewayKindGlyph, GatewaySectionHeading, RosterSectionHeader } from './roster-sections'
@@ -89,6 +90,37 @@ export function rosterSectionRenderers({
 
     const inGateway = Boolean(keyPrefix)
     const tree = nestSectionBlocks(groupRowsBySection(rows, userSections, allMeta, groupRooms), userSections)
+
+    // PINNED — favourites lifted above every folder, so a pinned bot is one
+    // click away however deep it is filed. The rows also stay in their
+    // folders (keyed apart by the prefix); this block is a shortcut, not a
+    // place, so it takes no drops and Collapse all leaves it open.
+    const pinnedRows = rows.filter(row =>
+      row.kind === 'group' ? Boolean(groupRooms[row.name]?.pinned) : isBotPinned(row.bot, allMeta)
+    )
+
+    const pinnedKey = `${keyPrefix}pinned`
+    const pinnedCollapsed = rosterSectionCollapsed(pinnedKey)
+
+    const pinnedBlock = pinnedRows.length ? (
+      <div className="min-w-0" data-slot="bots-pinned" key={pinnedKey}>
+        <RosterSectionHeader
+          collapsed={pinnedCollapsed}
+          count={pinnedRows.length}
+          icon="pinned"
+          label={b.sections.pinned}
+          onToggle={() => toggleRosterSection(pinnedKey)}
+        />
+        {pinnedCollapsed ? null : (
+          <div className="grid min-w-0 gap-0.5">
+            {pinnedRows.map(row =>
+              row.kind === 'group' ? renderGroupRow(row) : renderBotRow(row.bot, `${pinnedKey}:`)
+            )}
+          </div>
+        )}
+      </div>
+    ) : null
+
     const flat = flattenSectionTree(userSections)
 
     // "Move into" for section `id`: the top level, then every section, with
@@ -203,6 +235,7 @@ export function rosterSectionRenderers({
     const unassigned = top.filter(node => !node.block.id)
 
     return [
+      pinnedBlock,
       ...regular.map(node => renderNode(node, 0)),
       shared.length && regular.length ? (
         <div

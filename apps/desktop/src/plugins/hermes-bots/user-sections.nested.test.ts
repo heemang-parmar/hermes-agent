@@ -49,6 +49,7 @@ import {
   deleteBotSection,
   flattenSectionTree,
   groupRowsBySection,
+  isUserSectionKey,
   loadBotSections,
   moveBotSection,
   moveBotsToSection,
@@ -220,6 +221,17 @@ describe('nested user sections', () => {
     expect(rebuilt.find(s => s.id === oil.id)).toMatchObject({ color: 'navy' })
     expect(rebuilt.find(s => s.id === product.id)?.color).toBeUndefined()
     expect(rebuilt.find(s => s.id === shared.id)).toMatchObject({ shared: true })
+  })
+
+  it('collapse all reaches every folder, at any depth and under any gateway, and nothing else', () => {
+    for (const key of ['user-section:oil', 'local:user-section:labs', 'local:section:unassigned']) {
+      expect(isUserSectionKey(key)).toBe(true)
+    }
+
+    // Pinned stays open; gateway and group-chat buckets keep their own toggle.
+    for (const key of ['pinned', 'local:pinned', 'gateway:local', 'group-chats']) {
+      expect(isUserSectionKey(key)).toBe(false)
+    }
   })
 
   it('move up / down reorders among siblings only', () => {

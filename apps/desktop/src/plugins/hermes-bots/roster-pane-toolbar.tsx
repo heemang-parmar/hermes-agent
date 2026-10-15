@@ -31,6 +31,9 @@ interface renderRosterToolbarProps {
   setSectionDialog: (
     value: null | { bot?: RosterRow; mode: 'create' } | { id: string; mode: 'rename'; name: string }
   ) => void
+  hasUserSections: boolean
+  userSectionsCollapsed: boolean
+  setAllUserSectionsCollapsed: (collapsed: boolean) => void
   showRosterTools: boolean
   showRosterSearch: boolean
   showRosterFilters: boolean
@@ -54,6 +57,9 @@ export function renderRosterToolbar({
   setCreateOpen,
   setGroupCreateOpen,
   setSectionDialog,
+  hasUserSections,
+  userSectionsCollapsed,
+  setAllUserSectionsCollapsed,
   showRosterTools,
   showRosterSearch,
   showRosterFilters,
@@ -75,6 +81,19 @@ export function renderRosterToolbar({
           Bots
         </span>
         <div className="flex items-center gap-0.5">
+          {hasUserSections ? (
+            <Tip label={userSectionsCollapsed ? b.sections.expandAll : b.sections.collapseAll}>
+              <Button
+                aria-label={userSectionsCollapsed ? b.sections.expandAll : b.sections.collapseAll}
+                className="rounded-md text-(--ui-text-tertiary) hover:text-foreground"
+                onClick={() => setAllUserSectionsCollapsed(!userSectionsCollapsed)}
+                size="icon-xs"
+                variant="ghost"
+              >
+                <Codicon name={userSectionsCollapsed ? 'expand-all' : 'collapse-all'} />
+              </Button>
+            </Tip>
+          ) : null}
           <Tip label={b.org.open}>
             <Button
               aria-label={b.org.open}

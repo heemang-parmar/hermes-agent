@@ -183,6 +183,9 @@ type BotsMessages = {
     color: string
     colorAuto: string
     markShared: string
+    collapseAll: string
+    pinned: string
+    expandAll: string
     unmarkShared: string
     colorName: (key: string) => string
     deleted: (name: string, count: number) => string
@@ -659,6 +662,9 @@ const en: BotsMessages = {
     color: 'Color',
     colorAuto: 'Automatic',
     markShared: 'Show as shared department',
+    collapseAll: 'Collapse all sections',
+    pinned: 'Pinned',
+    expandAll: 'Expand all sections',
     unmarkShared: 'Show with companies',
     colorName: key =>
       (
@@ -1134,6 +1140,9 @@ const ja: BotsMessages = {
     color: '色',
     colorAuto: '自動',
     markShared: '共有部門として表示',
+    collapseAll: 'すべてのセクションを折りたたむ',
+    pinned: 'ピン留め',
+    expandAll: 'すべてのセクションを展開',
     unmarkShared: '企業と一緒に表示',
     colorName: key =>
       (
@@ -1605,6 +1614,9 @@ const zh: BotsMessages = {
     color: '颜色',
     colorAuto: '自动',
     markShared: '显示为共享部门',
+    collapseAll: '折叠所有分区',
+    pinned: '已置顶',
+    expandAll: '展开所有分区',
     unmarkShared: '与公司一起显示',
     colorName: key =>
       (
@@ -2066,6 +2078,9 @@ const zhHant: BotsMessages = {
     color: '顏色',
     colorAuto: '自動',
     markShared: '顯示為共享部門',
+    collapseAll: '摺疊所有分區',
+    pinned: '已釘選',
+    expandAll: '展開所有分區',
     unmarkShared: '與公司一起顯示',
     colorName: key =>
       (

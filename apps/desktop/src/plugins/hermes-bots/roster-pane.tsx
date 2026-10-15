@@ -56,6 +56,7 @@ import {
   $draggingBot,
   adoptBotSectionsFromMeta,
   backfillBotSectionNames,
+  isUserSectionKey,
   type SectionDialogState
 } from './user-sections'
 import { useEscapeCancelsBotDrag } from './user-sections-ui'
@@ -259,6 +260,11 @@ export function BotsPane() {
   const [activityFilter, setActivityFilter] = useState<RosterActivityFilter>('all')
   const [gatewayFilter, setGatewayFilter] = useState('all')
   const [collapsedRosterSections, setCollapsedRosterSections] = useState<Set<string>>(() => new Set())
+  // Collapse all / Expand all for USER sections: with it on, a user section
+  // is collapsed unless toggled open (membership in the set flips meaning),
+  // so the one switch reaches every folder at every depth and under every
+  // gateway without enumerating them.
+  const [userSectionsCollapsed, setUserSectionsCollapsed] = useState(false)
   const hiddenSectionRef = useRef<null | HTMLDivElement>(null)
   const activityToasts = useValue($activityToasts)
   const groupChatName = useValue($groupChatWorkspace)
@@ -378,7 +384,14 @@ export function BotsPane() {
     gatewayOptions
   })
 
-  const rosterSectionCollapsed = (id: string): boolean => !hasRosterConstraint && collapsedRosterSections.has(id)
+  const rosterSectionCollapsed = (id: string): boolean =>
+    !hasRosterConstraint &&
+    (userSectionsCollapsed && isUserSectionKey(id) ? !collapsedRosterSections.has(id) : collapsedRosterSections.has(id))
+
+  const setAllUserSectionsCollapsed = (collapsed: boolean): void => {
+    setUserSectionsCollapsed(collapsed)
+    setCollapsedRosterSections(previous => new Set([...previous].filter(id => !isUserSectionKey(id))))
+  }
 
   const toggleRosterSection = (id: string): void => {
     setCollapsedRosterSections(previous => {
@@ -478,6 +491,9 @@ export function BotsPane() {
         setCreateOpen,
         setGroupCreateOpen,
         setSectionDialog,
+        hasUserSections: userSections.length > 0,
+        userSectionsCollapsed,
+        setAllUserSectionsCollapsed,
         showRosterTools,
         showRosterSearch,
         showRosterFilters,

@@ -37,6 +37,13 @@ export type SectionDialogState =
   | { id: string; mode: 'rename'; name: string }
 
 export const UNASSIGNED_SECTION_KEY = 'section:unassigned'
+
+/** Whether a roster collapse key names a USER section block (any depth, any
+ *  gateway bucket) — what Collapse all / Expand all reaches. */
+export function isUserSectionKey(key: string): boolean {
+  return key.includes('user-section:') || key.endsWith(UNASSIGNED_SECTION_KEY)
+}
+
 export const BOT_SECTIONS_KEY = 'bot-sections-v1'
 
 export interface BotSection {
