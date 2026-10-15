@@ -5,6 +5,7 @@ import { sanitizeTextForSpeech } from '@/lib/speech-text'
 import { type LiveHistoryMessage, type LiveTranscriptFragment, VoiceLiveSession } from '@/lib/voice-live'
 import { isVoiceStopCommand } from '@/lib/voice-stop-word'
 import { notify, notifyError } from '@/store/notifications'
+import { appendVoiceCaption, promoteVoiceCaptionsToTurn } from '@/store/voice-captions'
 
 import { useComposerScope } from '../scope'
 
@@ -126,9 +127,12 @@ export function useVoiceLiveConversation({
   // The scope's session owner (a Bot's own connection + profile) picks the
   // GPT-Live backend and voice; a ref keeps the long-lived start closures
   // reading the current value.
-  const { connectionId: ownerConnectionId, profile: ownerProfile } = useComposerScope()
+  const { $messages, connectionId: ownerConnectionId, profile: ownerProfile, target } = useComposerScope()
   const ownerRef = useRef({ connectionId: ownerConnectionId, profile: ownerProfile })
   ownerRef.current = { connectionId: ownerConnectionId, profile: ownerProfile }
+  // Live captions land on this surface, anchored to its newest message.
+  const captionSurfaceRef = useRef({ $messages, target })
+  captionSurfaceRef.current = { $messages, target }
   // Bumped by every start/end so an in-flight start() that lost the race
   // (StrictMode double-effect, quick toggle) closes its session instead of
   // leaving a second billed one running.
@@ -252,6 +256,9 @@ export function useVoiceLiveConversation({
         // never delegates it, so the spoken stop phrase is judged on the user
         // transcript once the utterance settles.
         onTranscript: fragment => {
+          const surface = captionSurfaceRef.current
+          appendVoiceCaption(surface.target, fragment.speaker, fragment.text, surface.$messages.get().at(-1)?.id ?? null)
+
           if (fragment.speaker !== 'user') {
             return
           }
@@ -305,6 +312,8 @@ export function useVoiceLiveConversation({
 
             return
           }
+
+          promoteVoiceCaptionsToTurn(captionSurfaceRef.current.target)
 
           // A newer request supersedes an in-flight turn: stop it so the answer
           // the voice speaks is for what the user asked last.

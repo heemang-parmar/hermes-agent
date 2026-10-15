@@ -19,6 +19,7 @@ import { resetBrowseState } from '@/store/composer-input-history'
 import { recordFeatureUse } from '@/store/desktop-metrics'
 import { $gateway } from '@/store/gateway'
 import { notify, notifyError } from '@/store/notifications'
+import { retargetVoiceCaptions } from '@/store/voice-captions'
 import { $voiceLiveStatus, refreshVoiceLiveStatus, selectedVoiceChatMode } from '@/store/voice-live'
 import { $autoSpeakReplies, $voiceStopPhrase, setAutoSpeakReplies } from '@/store/voice-prefs'
 import { resumeWakeAfterVoice } from '@/store/wake-word'
@@ -107,8 +108,9 @@ export function useComposerVoice({
   // eslint-disable-next-line no-restricted-syntax -- session-id adopt token, not an atom mirror
   useEffect(() => {
     adoptSpokenReplySession(previousSessionIdRef.current, sessionId)
+    retargetVoiceCaptions(target, sessionId)
     previousSessionIdRef.current = sessionId
-  }, [sessionId])
+  }, [sessionId, target])
 
   const { dictate, voiceActivityState, voiceStatus } = useVoiceRecorder({
     focusInput,

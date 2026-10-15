@@ -5,6 +5,7 @@ import {
   type ComponentProps,
   type CSSProperties,
   type FC,
+  Fragment,
   memo,
   type ReactNode,
   startTransition,
@@ -52,6 +53,7 @@ import { resolveShowEarlierAction, shouldAutoShowEarlier, useTranscriptWindow } 
 import { useMessagesBelow } from './use-messages-below'
 import { useStickyPromptClip } from './use-sticky-prompt-clip'
 import { useTimelineReveal } from './use-timeline-reveal'
+import { VoiceCaptionsAfter, VoiceCaptionsTail } from './voice-captions'
 
 type ThreadMessageComponents = ComponentProps<typeof ThreadPrimitive.MessageByIndex>['components']
 
@@ -279,6 +281,29 @@ interface ThreadMessageListProps {
 // Group each user message with the assistant turn(s) that follow it so the
 // human bubble can `position: sticky` against the scroller across its whole
 // turn (see StickyHumanMessageContainer in thread.tsx).
+const NO_ANCHORS: readonly string[] = []
+
+/** Message ids per group (keyed by group id), for placing voice captions. */
+export function voiceCaptionAnchors(signature: string, groups: readonly MessageGroup[]): Map<string, string[]> {
+  const idByIndex = new Map(
+    signature
+      .split('\n')
+      .filter(Boolean)
+      .map(row => {
+        const [index, id] = row.split(':')
+
+        return [Number(index), id] as const
+      })
+  )
+
+  return new Map(
+    groups.map(group => [
+      group.id,
+      (group.kind === 'turn' ? group.indices : [group.index]).flatMap(index => idByIndex.get(index) ?? [])
+    ])
+  )
+}
+
 export function buildGroups(signature: string): MessageGroup[] {
   if (!signature) {
     return []
@@ -1545,18 +1570,29 @@ const ThreadMessageListInner: FC<ThreadMessageListProps> = ({
   // changed (measured live: 865 wasted Block renders in one drag, walked to
   // "MessageRenderBoundary (children only)" by explain()). With it, React
   // bails out on element identity and a scroll flip re-renders nothing below.
+  // Live voice captions render after the group holding the message that was
+  // newest when they were spoken; anything unanchored goes to the tail.
+  const groupMessageIds = useMemo(() => voiceCaptionAnchors(structuralSignature, groups), [structuralSignature, groups])
+
+  const visibleAnchorIds = useMemo(
+    () => new Set(visibleGroups.flatMap(group => groupMessageIds.get(group.id) ?? [])),
+    [visibleGroups, groupMessageIds]
+  )
+
   const rows = useMemo(
     () =>
       visibleGroups.map((group, indexInVisible) => (
-        <TurnRow
-          components={components}
-          group={group}
-          key={group.id}
-          resetKey={structuralSignature}
-          virtualized={indexInVisible < tailStart}
-        />
+        <Fragment key={group.id}>
+          <TurnRow
+            components={components}
+            group={group}
+            resetKey={structuralSignature}
+            virtualized={indexInVisible < tailStart}
+          />
+          <VoiceCaptionsAfter anchorIds={groupMessageIds.get(group.id) ?? NO_ANCHORS} />
+        </Fragment>
       )),
-    [visibleGroups, components, structuralSignature, tailStart]
+    [visibleGroups, components, structuralSignature, tailStart, groupMessageIds]
   )
 
   useMessagesBelow({ contentRef, scrollRef, isAtBottom, paneVisible, rows, sessionKey, sessionId: scrollSessionId })
@@ -1613,6 +1649,7 @@ const ThreadMessageListInner: FC<ThreadMessageListProps> = ({
           ) : (
             rows
           )}
+          <VoiceCaptionsTail anchorIds={visibleAnchorIds} />
           <PendingApprovalStack />
           {!renderEmpty && loadingIndicator}
           {!renderEmpty && clampToComposer && (
