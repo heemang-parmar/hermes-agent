@@ -3,7 +3,13 @@ projection. Bodies are rebound onto server.py's globals (method_ctx.bind_module)
 
 from __future__ import annotations
 
+import json
+import logging
+
 from .method_ctx import bind_module
+
+# Bound copies resolve these on server.py; the module's own (imported directly) needs them too.
+logger = logging.getLogger(__name__)
 
 # Verbose tool text is capped to the Ink render budget (a hair more, so the "[omitted …]" label
 # stays informative): unbounded output fed a render-tree blowup that OOM-killed the TUI parent.
@@ -364,6 +370,10 @@ def _on_tool_complete(sid: str, tool_call_id: str, name: str, args: dict, result
     # every client reconcile without parsing tool args.
     if todo_state is not None:
         _emit("todo.updated", sid, todo_state)
+    # A tool (a plugin adding goal criteria, parking the goal) can move automation state mid-turn: repaint
+    # the cards now, not at turn end. Revision-gated, so an ordinary tool emits nothing.
+    if session is not None:
+        _publish_session_control_snapshot(sid, session, only_if_changed=True)
 
 
 # ── _on_tool_progress dispatch: each handler takes (sid, name, preview, kw) ─────────────────────
@@ -450,7 +460,7 @@ _SUBAGENT_FIELDS = (
 )
 
 
-def _progress_subagent(sid: str, name: str, preview, kw, event_type):
+def _subagent_payload(event_type: str, name: str | None, preview, kw: dict, *, show_reasoning: bool) -> dict:
     payload = {"goal": str(kw.get("goal") or ""), "task_count": int(kw.get("task_count") or 1), "task_index": int(kw.get("task_index") or 0)}
     source = {**kw, "tool_name": name, "text": preview}
     for key, present, coerce in _SUBAGENT_FIELDS:
@@ -460,11 +470,16 @@ def _progress_subagent(sid: str, name: str, preview, kw, event_type):
                 payload[key] = val
     # subagent.thinking's text is the child's chain of thought: with reasoning hidden the
     # delegate card must not leak it, same policy as the child-mirror's reasoning.delta.
-    if event_type == "subagent.thinking" and not _session_show_reasoning(sid):
+    if event_type == "subagent.thinking" and not show_reasoning:
         payload.pop("text", None)
     if preview and event_type == "subagent.tool":
         payload["tool_preview"] = str(preview)
         payload["text"] = str(preview)
+    return payload
+
+
+def _progress_subagent(sid: str, name: str, preview, kw, event_type):
+    payload = _subagent_payload(event_type, name, preview, kw, show_reasoning=bool(_session_show_reasoning(sid)))
     # subagent.text is the child's per-token reply, relayed solely to feed a watch window's live mirror
     # (keyed off the child sid); on the parent it's hundreds of ignored frames, so skip it.
     if event_type != "subagent.text":
