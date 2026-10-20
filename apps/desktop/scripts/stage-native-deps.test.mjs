@@ -74,7 +74,11 @@ test('a missing Linux HUD toolchain leaves no empty package directories', () => 
     const distDir = join(tmp, 'dist')
     assert.equal(buildHudModifierMonitor({ source: join(tmp, 'missing-source'), distDir, platform: 'linux', arch: 'x64' }), null)
     assert.equal(existsSync(join(distDir, 'native')), false)
-    assert.match(warnings.join('\n'), /desktop packaging continues/)
+    // On a Linux host the compiler rung runs and fails; elsewhere linux-x64 is a cross
+    // target and is refused before any directory exists. Both must report and continue.
+    assert.match(warnings.join('\n'), process.platform === 'linux'
+      ? /desktop packaging continues/
+      : /linux-x64 needs a native build; modifier tap unavailable/)
   } finally {
     console.warn = originalWarn
     fs.rmSync(tmp, { recursive: true, force: true })

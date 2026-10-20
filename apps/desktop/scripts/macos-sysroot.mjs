@@ -54,3 +54,12 @@ export function macosSysroot(env = process.env) {
 export function xcrunClangArgv(sysroot) {
   return sysroot ? ['clang', '-isysroot', sysroot] : ['--sdk', 'macosx', 'clang']
 }
+
+// The environment for that xcrun call. xcrun locates clang through SDKROOT
+// before it reads argv, so a stale SDKROOT the resolver reported and ignored
+// still failed the build ("unable to find utility clang"). The resolved
+// selection already travels in argv (-isysroot or --sdk), so SDKROOT is dropped.
+export function xcrunClangEnv(env = process.env) {
+  const { SDKROOT: _consumed, ...rest } = env
+  return rest
+}

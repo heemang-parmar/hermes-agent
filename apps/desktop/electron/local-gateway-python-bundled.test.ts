@@ -6,7 +6,7 @@ import { expect, test } from 'vitest'
 
 import type { InstallStamp } from './install-stamp'
 import { closeGatewayTicketBridges, createGatewayTicketResolver } from './local-gateway-python'
-import { shortSocketTmpDir } from './local-gateway.test-helpers'
+import { shortSocketTmpDir, ticketHelperPython } from './local-gateway.test-helpers'
 import { bundledPayload, payloadTicketRuntime } from './payload-backend'
 
 // #138906 (RT-21): the Store/MSIX bundled backend is `kind: 'python'` but its command is the
@@ -16,7 +16,7 @@ test.skipIf(process.platform === 'win32')('a bundled payload mints tickets with 
   const home = await shortSocketTmpDir('gw-bundled-')
   const resources = await shortSocketTmpDir('gw-bundled-res-')
   const repo = path.resolve('../..')
-  const python = process.env.HERMES_TEST_PYTHON || 'python3'
+  const python = ticketHelperPython()
   const root = path.join(resources, 'agent-payload')
   await fs.mkdir(path.join(root, 'bin'), { recursive: true })
   await fs.mkdir(path.join(root, 'tools', 'python', 'bin'), { recursive: true })

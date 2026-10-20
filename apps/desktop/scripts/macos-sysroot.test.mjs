@@ -8,7 +8,7 @@ vi.mock('node:child_process', () => ({
 }))
 
 const { execFileSync } = await import('node:child_process')
-const { macosSysroot, xcrunClangArgv } = await import('./macos-sysroot.mjs')
+const { macosSysroot, xcrunClangArgv, xcrunClangEnv } = await import('./macos-sysroot.mjs')
 
 const exec = vi.mocked(execFileSync)
 const opts = env => ({ encoding: 'utf8', env, stdio: 'pipe' })
@@ -71,6 +71,21 @@ it('reports a stale SDKROOT and falls back to the toolchain default instead of f
     expect(warn).toHaveBeenLastCalledWith(expect.stringContaining(`SDKROOT=${SDKROOT}`))
   }
   expect(warn).toHaveBeenCalledTimes(3)
+})
+
+it('keeps a stale SDKROOT away from the clang xcrun call that follows the fallback', () => {
+  // xcrun resolves clang through SDKROOT before argv, so the reported-and-ignored
+  // selection must not reach the compile; the resolved sysroot travels in argv instead.
+  const paired = sdkDir(CLT_SDK)
+  const stale = { ...env, PATH: '/usr/bin', SDKROOT: path.join(developerDir, 'SDKs/MacOSX99.sdk') }
+  toolchain(stale.SDKROOT)
+  expect(macosSysroot(stale)).toBe(paired)
+  const clangEnv = xcrunClangEnv(stale)
+  expect(clangEnv).not.toHaveProperty('SDKROOT')
+  expect(clangEnv).toEqual({ DEVELOPER_DIR: developerDir, PATH: '/usr/bin' })
+  expect(stale.SDKROOT).toContain('MacOSX99.sdk') // the caller's environment is not mutated
+  expect(xcrunClangArgv(paired)).toEqual(['clang', '-isysroot', paired])
+  expect(xcrunClangEnv({ PATH: '/usr/bin' })).toEqual({ PATH: '/usr/bin' })
 })
 
 it('ignores an empty SDKROOT', () => {

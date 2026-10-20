@@ -355,12 +355,39 @@ test('update-all deduplicates the same recovery scope and keeps primary preceden
   )
 })
 
+// The detached wrapper publishes its pid in the launch intent before the launcher prints
+// MANAGED_UPDATE_STARTED, then logs the exit line, publishes the status and exits. Its exit
+// is the only completion marker that orders after every write: polling for the status file
+// alone raced the log writer under load and let cleanup race a still-writing wrapper (ENOTEMPTY).
+async function waitForManagedWrapperExit(home: string, deadlineMs: number = 30_000): Promise<void> {
+  const intent = JSON.parse(await readFile(path.join(home, `.update_launch_intent.${CORRELATION}`), 'utf8'))
+  const pid = Number(intent.pid)
+  assert.ok(Number.isInteger(pid) && pid > 0, `launch intent names the wrapper pid: ${JSON.stringify(intent)}`)
+
+  for (const deadline = Date.now() + deadlineMs; Date.now() < deadline;) {
+    try {
+      process.kill(pid, 0)
+    } catch (error: unknown) {
+      if (error instanceof Error && 'code' in error && error.code === 'ESRCH') {
+        return
+      }
+
+      throw error
+    }
+
+    await new Promise<void>(resolve => setTimeout(resolve, 25))
+  }
+
+  assert.fail(`managed update wrapper pid ${pid} did not exit within ${deadlineMs}ms`)
+}
+
 test.runIf(process.platform !== 'win32').each([0, 23])(
   'POSIX managed launcher executes the updater command and atomically publishes status %i',
   async (exitCode: number): Promise<void> => {
     const home: string = await mkdtemp(path.join(os.tmpdir(), 'hermes managed launch '))
     const shell: string = (await exec('command -v bash', { shell: 'bash' })).stdout.trim()
     const launcher: string = path.join(home, 'hermes launcher')
+    let launched = false
 
     try {
       await writeFile(
@@ -382,22 +409,10 @@ test.runIf(process.platform !== 'win32').each([0, 23])(
       const { stdout, stderr } = await exec(command, { shell, env: { ...process.env, HOME: home, HERMES_HOME: home } })
       const statusPath: string = path.join(home, `.update_exit_code.${CORRELATION}`)
       const logPath: string = path.join(home, 'logs', `desktop-update-${CORRELATION}.log`)
-      let status: string | undefined
-
-      for (let attempt: number = 0; attempt < 100; attempt += 1) {
-        try {
-          status = await readFile(statusPath, 'utf8')
-
-          break
-        } catch (error: unknown) {
-          if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
-            throw error
-          }
-
-          await new Promise<void>(resolve => setTimeout(resolve, 25))
-        }
-      }
-
+      launched = true
+      await waitForManagedWrapperExit(home)
+      launched = false
+      const status: string = await readFile(statusPath, 'utf8')
       const log: string = await readFile(logPath, 'utf8')
       assert.match(stdout, /MANAGED_UPDATE_STARTED/)
       assert.match(log, /managed-update start pid=/)
@@ -413,6 +428,12 @@ test.runIf(process.platform !== 'win32').each([0, 23])(
         false
       )
     } finally {
+      // An assertion that fired before the wrapper exited must not be masked by cleanup
+      // racing its remaining writes.
+      if (launched) {
+        await waitForManagedWrapperExit(home).catch(() => undefined)
+      }
+
       await rm(home, { force: true, recursive: true })
     }
   }

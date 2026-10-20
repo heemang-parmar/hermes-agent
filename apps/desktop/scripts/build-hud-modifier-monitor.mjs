@@ -5,7 +5,7 @@ import { chmodSync, existsSync, mkdirSync, renameSync, rmdirSync, rmSync } from 
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { retryHeld } from '../../../scripts/build/frontend-common.mjs'
-import { macosSysroot, xcrunClangArgv } from './macos-sysroot.mjs'
+import { macosSysroot, xcrunClangArgv, xcrunClangEnv } from './macos-sysroot.mjs'
 
 const script = fileURLToPath(import.meta.url)
 const root = resolve(dirname(script), '..')
@@ -69,7 +69,7 @@ export function buildHudModifierMonitor({
           '-o',
           staging
         ],
-        { stdio: 'pipe', timeout: 120_000 }
+        { stdio: 'pipe', timeout: 120_000, env: xcrunClangEnv() }
       )
     } else if (platform === 'win32') {
       execFileSync(resolveWindowsFrameworkCompiler(), [

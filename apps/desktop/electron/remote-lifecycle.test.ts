@@ -799,6 +799,53 @@ test.skipIf(process.platform === 'win32')(
   }
 )
 
+// Darwin has no /proc: the probe must recover the exact argv (KERN_PROCARGS2),
+// because `ps -o command=` joins it with spaces and a spaced argument no longer
+// splits back. A profile value with a space proves the boundaries survive, and
+// its first word alone must stay foreign.
+test.skipIf(process.platform === 'win32')(
+  'pidIsOurDashboard reads exact argv boundaries for arguments containing spaces',
+  async (): Promise<void> => {
+    const shell: string = (await exec('command -v bash', { shell: 'bash' })).stdout.trim()
+    const temp: string = await mkdtemp(path.join(os.tmpdir(), 'hermes argv boundaries '))
+    const entrypoint = path.join(temp, 'install dir', 'hermes')
+    const python: string = (await exec('command -v python3', { shell })).stdout.trim()
+    const tokenPath: string = path.join(temp, spawnTokenPath(OWNERSHIP_ID, SPAWN_NONCE).replace(/^~\//, ''))
+    const env: NodeJS.ProcessEnv = { ...process.env, HOME: temp, HERMES_HOME: temp }
+
+    await mkdir(path.dirname(entrypoint), { recursive: true })
+    await writeFile(entrypoint, 'import time\ntime.sleep(30)\n', 'utf8')
+
+    const child = spawn(python, [
+      entrypoint, '--profile', 'ops team', 'serve', '--isolated',
+      '--ssh-session-token-file', tokenPath, '--ssh-owner-nonce', SPAWN_NONCE
+    ], { stdio: 'ignore', env })
+
+    const ssh: Pick<SshConnection, 'exec'> = {
+      exec: async (command: string): Promise<string> => (await exec(command, { shell, env })).stdout
+    }
+
+    try {
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        if ((await exec(`ps -ww -o command= -p ${child.pid}`, { shell, env })).stdout.includes(entrypoint)) {
+          break
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+
+      const probe = (profile: string): Promise<boolean> =>
+        pidIsOurDashboard(ssh, child.pid, SPAWN_NONCE, '/not/the/launcher', '/unrelated/hermes-home', OWNERSHIP_ID, profile)
+
+      assert.equal(await probe('ops team'), true, 'a spaced profile and token path must keep their argv boundaries')
+      assert.equal(await probe('ops'), false, 'the first word of a spaced profile is not that profile')
+    } finally {
+      child.kill('SIGTERM')
+      await rm(temp, { force: true, recursive: true })
+    }
+  }
+)
+
 test.skipIf(process.platform !== 'linux')(
   'terminateOwnedDashboardForUpdate SIGTERMs a serve pinned to a "serve"-named profile',
   async () => {

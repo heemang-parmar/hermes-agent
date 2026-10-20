@@ -647,6 +647,28 @@ async function remoteProcessCreationTime(ssh, pid) {
   }
 }
 
+// Darwin has no /proc, and `ps -o command=` joins argv with spaces, so any
+// argument containing a space (a HOME-derived token path) no longer splits back
+// into the argv the process was spawned with. KERN_PROCARGS2 returns the exact
+// NUL-separated argv: argc, exec path, padding, then argv. The ps rung stays as
+// the fallback for hosts where the sysctl is refused (another user's process).
+const DARWIN_PROCARGS_PY =
+  'def procargs(pid):\n' +
+  ' import ctypes,ctypes.util\n' +
+  ' libc=ctypes.CDLL(ctypes.util.find_library("c"),use_errno=True)\n' +
+  ' mib=(ctypes.c_int*3)(1,49,pid)\n' +
+  ' size=ctypes.c_size_t(0)\n' +
+  ' if libc.sysctl(mib,3,None,ctypes.byref(size),None,0):raise OSError(ctypes.get_errno(),"sysctl")\n' +
+  ' buf=ctypes.create_string_buffer(size.value)\n' +
+  ' if libc.sysctl(mib,3,buf,ctypes.byref(size),None,0):raise OSError(ctypes.get_errno(),"sysctl")\n' +
+  ' raw=buf.raw[:size.value]\n' +
+  ' argc=int.from_bytes(raw[:4],sys.byteorder)\n' +
+  ' rest=raw[4:]\n' +
+  ' rest=rest[rest.index(b"\\0"):].lstrip(b"\\0")\n' +
+  ' args=rest.split(b"\\0")[:argc]\n' +
+  ' if len(args)!=argc:raise ValueError("truncated procargs")\n' +
+  ' return [x.decode("utf-8","surrogateescape") for x in args]\n'
+
 // A pid is "provably ours" only if its remote cmdline carries our dashboard
 // args — never kill a pid we can't positively identify as our dashboard.
 async function pidIsOurDashboard(
@@ -677,16 +699,22 @@ async function pidIsOurDashboard(
     `expected_token=os.path.expanduser(${shq(ownershipId ? spawnTokenPath(ownershipId, spawnNonce) : '')})\n` +
     `expected_profile=${shq(profile)}\n` +
     `nonce=${shq(spawnNonce)}\n` +
+    DARWIN_PROCARGS_PY +
     'try:\n' +
     ' raw=open(f"/proc/{pid}/cmdline","rb").read()\n' +
     ' args=[x.decode("utf-8","surrogateescape") for x in raw.split(b"\\0") if x]\n' +
     'except OSError:\n' +
-    ' try:\n' +
-    '  line=subprocess.check_output(["ps","-ww","-o","command=","-p",str(pid)],text=True).strip()\n' +
-    ' except subprocess.CalledProcessError:\n' +
-    '  # pid already gone — a dead process is FOREIGN, not a transport error\n' +
-    '  print("FOREIGN");sys.exit(0)\n' +
-    ' args=shlex.split(line)\n' +
+    ' args=None\n' +
+    ' if sys.platform=="darwin":\n' +
+    '  try:args=procargs(pid)\n' +
+    '  except (OSError,ValueError,AttributeError):pass\n' +
+    ' if args is None:\n' +
+    '  try:\n' +
+    '   line=subprocess.check_output(["ps","-ww","-o","command=","-p",str(pid)],text=True).strip()\n' +
+    '  except subprocess.CalledProcessError:\n' +
+    '   # pid already gone — a dead process is FOREIGN, not a transport error\n' +
+    '   print("FOREIGN");sys.exit(0)\n' +
+    '  args=shlex.split(line)\n' +
     'ok=False\n' +
     'try:\n' +
     // A profile literally named "serve" puts the value token before the
