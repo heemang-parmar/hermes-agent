@@ -1,11 +1,7 @@
-// Quick repro test for the screenshot fragmentation
-import { describe, it, expect, beforeEach } from 'vitest'
+// Pre-reconciliation original of this repro: ./__archive__/voice-caption-repro.original.ts.txt
+import { beforeEach, describe, expect, it } from 'vitest'
 
-import {
-  $voiceCaptions,
-  appendVoiceCaption,
-  promoteVoiceCaptionsToTurn
-} from './voice-captions'
+import { $voiceCaptions, appendVoiceCaption, promoteVoiceCaptionsToTurn } from './voice-captions'
 
 const captions = (target = 'main') =>
   ($voiceCaptions.get()[target]?.captions ?? []).map(({ afterMessageId, speaker, text }) => ({
@@ -18,25 +14,18 @@ describe('voice caption fragmentation repro', () => {
   beforeEach(() => $voiceCaptions.set({}))
 
   it('reproduces "let me locate it." fragmentation', () => {
-    // User: "let me locate it."
     appendVoiceCaption('main', 'user', 'let', 'm1')
     appendVoiceCaption('main', 'user', ' me locate', 'm1')
     appendVoiceCaption('main', 'user', ' it.', 'm1')
 
-    const result = captions()
-    console.log('let me locate:', JSON.stringify(result, null, 2))
-    expect(result).toHaveLength(1)
-    expect(result[0].text).toBe('let me locate it.')
+    expect(captions()).toEqual([{ afterMessageId: 'm1', speaker: 'user', text: 'let me locate it.' }])
   })
 
   it('reproduces "Mm-hmm." fragmentation', () => {
     appendVoiceCaption('main', 'user', 'Mm-h', 'm1')
     appendVoiceCaption('main', 'user', 'mm.', 'm1')
 
-    const result = captions()
-    console.log('Mm-hmm:', JSON.stringify(result, null, 2))
-    expect(result).toHaveLength(1)
-    expect(result[0].text).toBe('Mm-hmm.') // Document the actual result
+    expect(captions()).toEqual([{ afterMessageId: 'm1', speaker: 'user', text: 'Mm-hmm.' }])
   })
 
   it('reproduces "Hello With Cloud Code, right" fragmentation on assistant', () => {
@@ -44,10 +33,7 @@ describe('voice caption fragmentation repro', () => {
     appendVoiceCaption('main', 'assistant', ' With', 'm1')
     appendVoiceCaption('main', 'assistant', ' Cloud Code, right', 'm1')
 
-    const result = captions()
-    console.log('Hello With:', JSON.stringify(result, null, 2))
-    expect(result).toHaveLength(1)
-    expect(result[0].text).toBe('Hello With Cloud Code, right')
+    expect(captions()).toEqual([{ afterMessageId: 'm1', speaker: 'assistant', text: 'Hello With Cloud Code, right' }])
   })
 
   it('reproduces "Uh okay, and one eng, more thing..." fragmentation', () => {
@@ -55,9 +41,13 @@ describe('voice caption fragmentation repro', () => {
     appendVoiceCaption('main', 'assistant', ' eng, more', 'm1')
     appendVoiceCaption('main', 'assistant', ' thing, can you help me uh Tell me where is> exactly', 'm1')
 
-    const result = captions()
-    console.log('Uh okay:', JSON.stringify(result, null, 2))
-    expect(result).toHaveLength(1)
+    expect(captions()).toEqual([
+      {
+        afterMessageId: 'm1',
+        speaker: 'assistant',
+        text: 'Uh okay, and one eng, more thing, can you help me uh Tell me where is> exactly'
+      }
+    ])
   })
 
   it('reproduces ". The Kanban board" fragmentation', () => {
@@ -65,38 +55,78 @@ describe('voice caption fragmentation repro', () => {
     appendVoiceCaption('main', 'assistant', ' Kanban', 'm1')
     appendVoiceCaption('main', 'assistant', ' board', 'm1')
 
-    const result = captions()
-    console.log('. The Kanban:', JSON.stringify(result, null, 2))
-    expect(result).toHaveLength(1)
+    expect(captions()).toEqual([{ afterMessageId: 'm1', speaker: 'assistant', text: '. The Kanban board' }])
   })
 
   it('reproduces realistic sequence: assistant fills then user speaks then delegation', () => {
-    // Voice model says filler (single fragment) before user turns
     appendVoiceCaption('main', 'assistant', 'Mm-hmm.', 'm1')
-    // User starts: "let me locate it."
     appendVoiceCaption('main', 'user', 'let', 'm1')
     appendVoiceCaption('main', 'user', ' me locate', 'm1')
     appendVoiceCaption('main', 'user', ' it.', 'm1')
-    // Delegation happens - drops user captions and mutes assistant
+
+    expect(captions()).toEqual([
+      { afterMessageId: 'm1', speaker: 'assistant', text: 'Mm-hmm.' },
+      { afterMessageId: 'm1', speaker: 'user', text: 'let me locate it.' }
+    ])
+
+    // The delegation turns the user's words into a real bubble, so their caption goes.
     promoteVoiceCaptionsToTurn('main')
-    // Voice says response (should be muted)
+
+    const afterDelegation = [{ afterMessageId: 'm1', speaker: 'assistant', text: 'Mm-hmm.' }]
+
+    expect(captions()).toEqual(afterDelegation)
+
+    // The voice's reply is muted: unmuted, it would merge into the trailing
+    // assistant caption as 'Mm-hmm.The Kanban board'.
     appendVoiceCaption('main', 'assistant', 'The', 'm2')
     appendVoiceCaption('main', 'assistant', ' Kanban', 'm2')
     appendVoiceCaption('main', 'assistant', ' board', 'm2')
 
-    const result = captions()
-    console.log('realistic:', JSON.stringify(result, null, 2))
+    expect(captions()).toEqual(afterDelegation)
   })
 
   it('checks rapid-fire same speaker deltas', () => {
-    // Simulate the vendor emitting 3 quick deltas
     appendVoiceCaption('main', 'user', 'l', 'm1')
     appendVoiceCaption('main', 'user', 'e', 'm1')
     appendVoiceCaption('main', 'user', 't', 'm1')
 
-    const result = captions()
-    console.log('l,e,t rapid:', JSON.stringify(result, null, 2))
-    expect(result).toHaveLength(1)
-    expect(result[0].text).toBe('let')
+    expect(captions()).toEqual([{ afterMessageId: 'm1', speaker: 'user', text: 'let' }])
+  })
+
+  it('keeps the anchor of the first delta when a same-speaker delta arrives after a new message', () => {
+    appendVoiceCaption('main', 'user', 'let me', 'm1')
+    appendVoiceCaption('main', 'user', ' locate it.', 'm2')
+
+    expect(captions()).toEqual([{ afterMessageId: 'm1', speaker: 'user', text: 'let me locate it.' }])
+  })
+
+  it('starts a new caption, anchored at its own message, on a speaker switch', () => {
+    appendVoiceCaption('main', 'user', 'let me locate it.', 'm1')
+    appendVoiceCaption('main', 'assistant', 'Mm-hmm.', 'm2')
+    appendVoiceCaption('main', 'user', 'The Kanban board', 'm2')
+
+    expect(captions()).toEqual([
+      { afterMessageId: 'm1', speaker: 'user', text: 'let me locate it.' },
+      { afterMessageId: 'm2', speaker: 'assistant', text: 'Mm-hmm.' },
+      { afterMessageId: 'm2', speaker: 'user', text: 'The Kanban board' }
+    ])
+  })
+
+  it('creates nothing for a whitespace-only first delta and trims the leading space of a new caption', () => {
+    appendVoiceCaption('main', 'user', '  ', 'm1')
+
+    expect(captions()).toEqual([])
+
+    appendVoiceCaption('main', 'user', ' let', 'm2')
+
+    expect(captions()).toEqual([{ afterMessageId: 'm2', speaker: 'user', text: 'let' }])
+  })
+
+  it('keeps a whitespace-only delta verbatim once the caption exists', () => {
+    appendVoiceCaption('main', 'user', 'let', 'm1')
+    appendVoiceCaption('main', 'user', ' ', 'm1')
+    appendVoiceCaption('main', 'user', 'me', 'm1')
+
+    expect(captions()).toEqual([{ afterMessageId: 'm1', speaker: 'user', text: 'let me' }])
   })
 })

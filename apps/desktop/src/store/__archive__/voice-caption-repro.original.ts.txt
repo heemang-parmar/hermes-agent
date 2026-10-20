@@ -1,3 +1,19 @@
+ARCHIVAL COPY - NOT A TEST. Do not rename this back to *.test.ts.
+
+This is the pre-reconciliation, byte-identical original of the user's
+screenshot-fragmentation repro test, kept so the reconciled
+../voice-caption-repro.test.ts stays auditable against it. It carries one
+stale assertion ('Mm-hmmmm.'); appendVoiceCaption concatenates
+last.text + delta, so 'Mm-h' + 'mm.' is 'Mm-hmm.'. The .txt extension keeps
+it out of every vitest include glob in apps/desktop/vitest.config.ts.
+
+Checksum-verified backup (outside the repo):
+  /Users/ariv-ai/.hermes-integration/backups/voice-caption-repro.original.test.ts
+  sha256 b77c68bdb2d0fc80c5146a2cc3893dcdf7cabf34e556dddc8dcd9a52cfca8a33
+The original is everything after the marker line below, to end of file
+(3907 bytes, no trailing newline): tail -c 3907 <this file> | shasum -a 256
+
+----- BEGIN VERBATIM ORIGINAL -----
 // Quick repro test for the screenshot fragmentation
 import { describe, it, expect, beforeEach } from 'vitest'
 
