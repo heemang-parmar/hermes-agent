@@ -302,24 +302,42 @@ def _iter_builtin_candidates(models_dev_data: dict, excluded: set, seen: set):
             yield hermes_id, mdev_id, pconfig, env_vars
 
 
+def _store_section_keys(store: dict, section: str, *, non_empty: bool = False) -> set[str]:
+    """Lowercased keys of ``store[section]`` (only those with a truthy value when *non_empty*);
+    empty when the section is absent or malformed."""
+    entries = store.get(section) if isinstance(store, dict) else None
+    if not isinstance(entries, dict):
+        return set()
+    return {str(k).lower() for k, v in entries.items() if v or not non_empty}
+
+
 def _auth_store_has_provider(*keys: str) -> bool:
-    """True when ``auth.json`` has a ``providers`` entry under any of *keys*."""
+    """True when ``auth.json`` has a ``providers`` entry under any of *keys*.
+
+    In profile mode the global-root ``auth.json`` is consulted for keys the profile does not declare
+    (the ``read_credential_pool`` / ``get_provider_auth_state`` shadowing), so a provider logged in
+    once at the root is discoverable from every named profile."""
     try:
-        from hermes_cli.auth import _load_auth_store
-        store = _load_auth_store()
-        providers_store = store.get("providers", {})
-        return bool(store and any(k in providers_store for k in keys))
+        from hermes_cli.auth import _load_auth_store, _load_global_auth_store
+        wanted = {str(k).lower() for k in keys}
+        if not wanted:
+            return False
+        if wanted & _store_section_keys(_load_auth_store(), "providers"):
+            return True
+        return bool(wanted & _store_section_keys(_load_global_auth_store(), "providers"))
     except Exception as exc:
         logger.debug("Auth store check failed for %s: %s", keys[0] if keys else "", exc)
         return False
 
 
 def _raw_pool_usable(hermes_id: str, *, for_picker: bool = False) -> bool:
-    """Section-1 pool check: only consult the pool when auth.json lists a raw entry."""
+    """Section-1 pool check: only consult the pool when auth.json lists a raw entry (the profile's
+    own pool first, then the global root's, per provider)."""
     try:
-        from hermes_cli.auth import _load_auth_store
-        store = _load_auth_store()
-        if store and store.get("credential_pool", {}).get(hermes_id):
+        from hermes_cli.auth import _load_auth_store, _load_global_auth_store
+        key = hermes_id.lower()
+        if (key in _store_section_keys(_load_auth_store(), "credential_pool", non_empty=True)
+                or key in _store_section_keys(_load_global_auth_store(), "credential_pool", non_empty=True)):
             return _credential_pool_is_usable(hermes_id, raw_pool_present=True, for_picker=for_picker)
     except Exception:
         pass

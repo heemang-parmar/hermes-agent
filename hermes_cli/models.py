@@ -2049,12 +2049,47 @@ def _credential_fingerprint(provider: str) -> str:
     return hashlib.blake2b(blob, digest_size=8).hexdigest()
 
 
-def _load_provider_models_cache() -> dict:
-    """Return the full cache dict, or {} on any error."""
+def _read_provider_models_cache_at(path: Path) -> dict:
+    """Return the cache dict stored at *path*, or {} on any error."""
     try:
-        return _read_json_cache(_provider_models_cache_path()) or {}
+        return _read_json_cache(path) or {}
     except Exception:
         return {}
+
+
+def _load_provider_models_cache() -> dict:
+    """Return the full cache dict, or {} on any error."""
+    return _read_provider_models_cache_at(_provider_models_cache_path())
+
+
+def _inherited_global_cache_entry(provider: str, fp: str) -> Optional[dict]:
+    """The global root's cache row for *provider* when a named profile borrows the root's credential.
+
+    Read-only fallback for a cold profile cache: served only when the profile's own ``auth.json``
+    declares neither a ``providers`` entry nor a ``credential_pool`` row for *provider* (so the
+    credential ``_credential_fingerprint`` sees IS the root's, per the ``read_credential_pool``
+    shadowing), the root does declare one, and the root row was written for the same fingerprint *fp*
+    (a different principal is a different catalog). ``None`` in classic mode, where the profile is
+    the root and there is nothing to inherit."""
+    try:
+        from hermes_cli.auth import _global_auth_file_path, _load_auth_store, _load_global_auth_store
+        global_auth = _global_auth_file_path()
+        if global_auth is None:
+            return None
+
+        def _declares(store: dict) -> bool:
+            providers = store.get("providers")
+            pool = store.get("credential_pool")
+            return ((isinstance(providers, dict) and provider in providers)
+                    or (isinstance(pool, dict) and bool(pool.get(provider))))
+
+        if _declares(_load_auth_store()) or not _declares(_load_global_auth_store()):
+            return None
+        entry = _read_provider_models_cache_at(global_auth.parent / "provider_models_cache.json").get(provider)
+    except Exception:
+        logger.debug("Inherited global model cache read failed for %s", provider, exc_info=True)
+        return None
+    return entry if _cache_entry_valid(entry, fp, allow_empty=provider == "ollama") else None
 
 
 def _save_provider_models_cache(data: dict) -> None:
@@ -2097,7 +2132,9 @@ def cached_provider_model_ids(
 
     ``non_blocking`` marks the GUI read path (``model.options``): it NEVER waits on a provider probe.
     A same-credentials row of any age is served as-is and a daemon thread warms the next open; a
-    cold/mismatched row returns ``[]`` so the caller keeps its curated list. One degraded provider
+    cold/mismatched row falls back to the global root's same-fingerprint row when a named profile
+    borrows the root's credential (:func:`_inherited_global_cache_entry`), else returns ``[]`` so the
+    caller keeps its curated list. One degraded provider
     (hanging or timing-out ``/v1/models``) therefore delays nothing but itself (#114215)."""
     normalized = _normalized_cache_slug(provider)
     if not normalized:
@@ -2108,6 +2145,10 @@ def cached_provider_model_ids(
     fp = _credential_fingerprint(normalized)
     entry = cache.get(normalized)
     now = time.time()
+    if non_blocking and not force_refresh and not _cache_entry_valid(entry, fp, allow_empty=is_ollama):
+        # A named profile borrowing the root's login inherits the root's same-credentials catalog
+        # instead of collapsing to the curated list until its own cache warms.
+        entry = _inherited_global_cache_entry(normalized, fp) or entry
 
     if not force_refresh:
         tier = _disk_serve_tier(entry, fp, now, is_ollama=is_ollama, ttl_seconds=ttl_seconds)
