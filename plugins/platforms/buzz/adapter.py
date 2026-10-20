@@ -68,7 +68,6 @@ from gateway.platforms.base import (
 from gateway.platforms.helpers import cancel_task
 from gateway.platforms.event import MessageEvent, MessageType
 from gateway.config import Platform
-from plugins.platforms.buzz.buzz_cursors import _SEEN_CAP, BuzzCursorMixin
 
 
 _CHAT_KIND = 9  # ``messages get`` also returns housekeeping kinds, never dispatched
@@ -186,6 +185,8 @@ _media_refs = _load_sibling("media_refs")  # same-relay media URL detection (kep
 
 _presence = _load_sibling("presence")  # opt-in own presence heartbeat
 _huddle_voice = _load_sibling("huddle_voice")  # opt-in huddle voice, owner invitation only
+_buzz_cursors = _load_sibling("buzz_cursors")
+_SEEN_CAP, BuzzCursorMixin = _buzz_cursors._SEEN_CAP, _buzz_cursors.BuzzCursorMixin
 
 # bech32 (BIP-173) npub <-> hex so mention detection and allow-lists accept either form.
 from gateway.authz_mixin import (
