@@ -50,6 +50,14 @@ optional_env:
     description: "Seconds between inbound poll sweeps (default: 4)"
     prompt: "Poll interval seconds"
     password: false
+  - name: BUZZ_PRESENCE
+    description: "Opt in to publishing the agent's own Buzz presence (online while the inbound transport is live, offline otherwise) (true/false, default: false)"
+    prompt: "Publish presence? (true/false, default false)"
+    password: false
+  - name: BUZZ_PRESENCE_INTERVAL
+    description: "Seconds between presence heartbeats (default: 60; clamped to 15-60 so one miss never outlives the relay's 180s TTL)"
+    prompt: "Presence interval seconds"
+    password: false
   - name: BUZZ_CLI_PATH
     description: "Path to the buzz CLI binary (default: 'buzz' on PATH, then ~/bin/buzz)"
     prompt: "buzz CLI path (or empty)"

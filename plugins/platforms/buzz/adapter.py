@@ -82,6 +82,8 @@ _DISPATCH_KINDS = frozenset({_CHAT_KIND, 45001, 45003})
 _UNRESOLVED_MENTION_ERROR_RE = re.compile(r"mention '@(?P<name>[^']+)' does not match a current channel member")
 _BUZZ_PRESENTATION_MENTION_SEPARATOR = "\u200b"
 _HEX64_RE = re.compile(r"[0-9a-f]{64}")
+# Standalone "@all": not "@allison", "x@all", or "@@all".
+_BROADCAST_RE = re.compile(r"(?<![\w@])@all(?=$|[\s,;.!?:)\]}])", re.IGNORECASE)
 
 
 def _escape_unresolved_presentation_mention(content: str, error: str) -> Optional[str]:
@@ -151,13 +153,6 @@ _WS_MEMBERSHIP_KIND = 44100  # Buzz channel-membership event — live DM discove
 _WS_MEMBERSHIP_SUB_ID = "hermes-buzz-membership"
 # Credentials JSON fallback when BUZZ_PRIVATE_KEY is not set; module-level so tests can point it at a tmpdir.
 _DEFAULT_CREDENTIALS_DIR = Path("~/.config/buzz").expanduser()
-# Buzz-hosted media is private to the community: same-relay URLs must be authenticated + localised for vision.
-_MEDIA_URL_PATTERN = r"https?://[^\s<>\[\]()]+/media/[0-9a-f]{64}(?:\.[a-z0-9]{1,10})?(?:\?[^\s<>\[\]()]*)?"
-_MARKDOWN_MEDIA_RE = re.compile(
-    rf"!\[(?P<alt>[^\]]*)\]\(\s*(?P<url>{_MEDIA_URL_PATTERN})(?:\s+[\"'][^\"']*[\"'])?\s*\)", re.IGNORECASE
-)
-_BARE_MEDIA_RE = re.compile(_MEDIA_URL_PATTERN, re.IGNORECASE)
-_MEDIA_PATH_RE = re.compile(r"^/media/(?P<sha>[0-9a-f]{64})(?P<ext>\.[a-z0-9]{1,10})?/?$", re.IGNORECASE)
 
 
 def _consume_ws_read_task(task: asyncio.Task) -> None:
@@ -165,56 +160,6 @@ def _consume_ws_read_task(task: asyncio.Task) -> None:
     if not task.cancelled():
         with contextlib.suppress(Exception):
             task.exception()
-
-
-def _effective_port(parsed) -> Optional[int]:
-    try:
-        if parsed.port is not None:
-            return parsed.port
-    except ValueError:
-        return None
-    return {"https": 443, "wss": 443, "http": 80, "ws": 80}.get(parsed.scheme)
-
-
-def _is_relay_media_url(url: str, relay_url: str) -> bool:
-    """Return whether *url* is a Buzz media object on the configured relay."""
-    candidate, relay = urlsplit(url), urlsplit(relay_url)
-    return bool(
-        candidate.scheme in ("http", "https") and candidate.hostname and relay.hostname
-        and candidate.hostname.lower() == relay.hostname.lower()
-        and _effective_port(candidate) == _effective_port(relay) and _MEDIA_PATH_RE.fullmatch(candidate.path)
-    )
-
-
-def _find_relay_media_refs(text: str, relay_url: str) -> tuple[list[str], list[tuple[int, int, str]]]:
-    """Find same-relay media URLs and their safe text replacements."""
-    urls: list[str] = []
-    replacements: list[tuple[int, int, str]] = []
-    markdown_spans: list[tuple[int, int]] = []
-    for match in _MARKDOWN_MEDIA_RE.finditer(text):
-        url = match.group("url")
-        if not _is_relay_media_url(url, relay_url):
-            continue
-        markdown_spans.append(match.span())
-        replacements.append((*match.span(), match.group("alt").strip()))
-        if url not in urls:
-            urls.append(url)
-    for match in _BARE_MEDIA_RE.finditer(text):
-        if any(start <= match.start() and match.end() <= end for start, end in markdown_spans):
-            continue
-        url = match.group(0)
-        if not _is_relay_media_url(url, relay_url):
-            continue
-        replacements.append((*match.span(), ""))
-        if url not in urls:
-            urls.append(url)
-    return urls, replacements
-
-
-def _replace_media_refs(text: str, replacements: list[tuple[int, int, str]]) -> str:
-    for start, end, replacement in sorted(replacements, reverse=True):
-        text = f"{text[:start]}{replacement}{text[end:]}"
-    return re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]+\n", "\n", text)).strip()
 
 
 def _load_sibling(name: str):
@@ -237,6 +182,10 @@ def _load_sibling_file(name: str):
 
 
 _nostr_auth = _load_sibling("nostr_auth")
+_media_refs = _load_sibling("media_refs")  # same-relay media URL detection (kept out of this module)
+
+_presence = _load_sibling("presence")  # opt-in own presence heartbeat
+_huddle_voice = _load_sibling("huddle_voice")  # opt-in huddle voice, owner invitation only
 
 # bech32 (BIP-173) npub <-> hex so mention detection and allow-lists accept either form.
 from gateway.authz_mixin import (
@@ -415,6 +364,11 @@ async def _exec_buzz(
         await proc.wait()
         detail = {"error": "timeout", "message": f"buzz {args[0] if args else ''} timed out after {timeout}s"}
         return 124, "", json.dumps(detail)
+    except asyncio.CancelledError:
+        # A cancelled caller must not leave the child running: an orphaned "online" could land after "offline".
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        raise
     rc = proc.returncode if proc.returncode is not None else 4
     return rc, stdout.decode("utf-8", errors="replace"), stderr.decode("utf-8", errors="replace")
 
@@ -508,7 +462,7 @@ _MEDIA_KIND_PRIORITY = (("image", MessageType.PHOTO), ("audio", MessageType.AUDI
 _ATTACHMENT_KIND_TYPES = {"image": MessageType.PHOTO, "video": MessageType.VIDEO, "audio": MessageType.AUDIO, "document": MessageType.DOCUMENT}
 
 
-class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
+class BuzzAdapter(BuzzCursorMixin, _presence.BuzzPresenceMixin, _huddle_voice.BuzzHuddleVoiceMixin, BasePlatformAdapter):
     """Buzz adapter (WebSocket push with poll fallback) for the BasePlatformAdapter interface."""
 
     serial_receive_loop = True  # WS listener and poll sweep both await each event batch before reading the next
@@ -546,6 +500,9 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
         # never dispatch; allowed_users wins on overlap.
         self._allowed_pubkeys: set = _pubkey_set(_setting_or("BUZZ_ALLOWED_USERS", extra, "allowed_users", []))
         self._reaction_only_pubkeys: set = _pubkey_set(_setting_or("BUZZ_REACTION_ONLY_USERS", extra, "reaction_only_users", []))
+        # Buzz encodes a typed "@all" as plain text with no p-tags, so it is an address only from these
+        # identities (config only, empty = off). Keep agents out of it: an agent's "@all" would fan out to peers.
+        self._broadcast_pubkeys: set = _pubkey_set(extra.get("broadcast_users") or [])
         # Secret — resolved lazily (never at import time, never logged); connect() re-resolves.
         self._private_key = self._auth_tag = ""
         # Identity — filled in by connect() from ``buzz users get``
@@ -576,6 +533,15 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
         self._profile_name_cache: dict[str, tuple[float, str]] = {}
         # inbound event_id -> thread root (None when top-level), so send() joins the user's thread instead of nesting.
         self._thread_roots: OrderedDict[str, Optional[str]] = OrderedDict()
+        # Inbound liveness, the only thing presence trusts: WS open + authed + subscribed, or a recent good poll sweep.
+        self._ws_live = False
+        self._last_poll_ok: Optional[float] = None
+        # Own presence heartbeat (kind 20001, presence.py): opt-in per profile, never on by default.
+        self._init_presence(_setting_or("BUZZ_PRESENCE", extra, "presence", False),
+                            _scoped_platform_setting("BUZZ_PRESENCE_INTERVAL", extra, "presence_interval"), extra)
+        # Huddle voice (huddle_voice.py): opt-in per profile, joins only on an owner's invitation.
+        self._init_huddle_voice(extra.get("huddle_voice", False), _normalize_user_ref(str(extra.get("owner") or "")),
+                                extra.get("relay_pubkey"))
 
     @property
     def name(self) -> str:
@@ -593,12 +559,12 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
 
     # ── buzz-cli plumbing ─────────────────────────────────────────────────
 
-    async def _run_cli(self, args: list[str], *, input_text: Optional[str] = None) -> tuple[int, str, str]:
+    async def _run_cli(self, args: list[str], *, input_text: Optional[str] = None, timeout: float = _CLI_TIMEOUT) -> tuple[int, str, str]:
         if not self._private_key:
             self._private_key = _resolve_private_key(self._extra)
             self._auth_tag = _resolve_auth_tag(self._extra)
         return await _exec_buzz(self.cli_path, args, relay_url=self.relay_url, private_key=self._private_key,
-                                auth_tag=self._auth_tag, input_text=input_text)
+                                auth_tag=self._auth_tag, input_text=input_text, timeout=timeout)
 
     async def _cli_json(self, args: list[str], default):
         """``_run_cli`` -> parsed stdout on rc 0, else *default*."""
@@ -699,11 +665,27 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
             self.relay_url, self._display_name or self._self_npub[:16], len(self._channel_state),
             transport_used, "" if transport_used == "websocket" else f", poll interval {self.poll_interval:.1f}s",
         )
+        await self._start_presence()
         self._wire_plugin_handlers(None)
         return True
 
+    def _presence_transport_healthy(self) -> bool:
+        """True only while the inbound receive path is proven live right now (presence must never outlive it)."""
+        if self._ws_task is not None and not self._ws_task.done():
+            return self._ws_live
+        if self._poll_task is not None and not self._poll_task.done() and self._last_poll_ok is not None:
+            return time.monotonic() - self._last_poll_ok < max(3 * self.poll_interval, _presence.MIN_PRESENCE_INTERVAL)
+        return False
+
+    def _set_ws_live(self, live: bool) -> None:
+        if live != self._ws_live:
+            self._ws_live = live
+            self._presence_poke()
+
     async def disconnect(self) -> None:
         """Stop the inbound transport and drop runtime state."""
+        await self._stop_presence()
+        await self._stop_huddle_voice()
         self._mark_disconnected()
         with contextlib.suppress(Exception):
             self._release_platform_lock()
@@ -822,8 +804,11 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
     async def send(self, chat_id: str, content: str, reply_to: Optional[str] = None, metadata: Optional[dict[str, Any]] = None) -> SendResult:
         if not content:
             return SendResult(success=False, error="Empty message")
-        # Anchor: metadata.thread_id, then metadata.reply_to_message_id (stream/progress sends), then reply_to.
         meta = metadata or {}
+        # A stream's first frame carries expect_edits: a draft held until the finalize edit.
+        if (spoken := self._huddle_reply(chat_id, content, final=not meta.get("expect_edits"))) is not None:
+            return spoken
+        # Anchor: metadata.thread_id, then metadata.reply_to_message_id (stream/progress sends), then reply_to.
         args = ["messages", "send", "--channel", str(chat_id), "--content", "-"]
         args += self._reply_args(meta.get("thread_id") or meta.get("reply_to_message_id") or reply_to)
         mention_pubkeys = await self._mention_pubkeys_for(chat_id, content)
@@ -832,6 +817,7 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
         if result.success:
             # Record event_meta so a thread reply to this send matches even if the echo never arrives.
             self._remember_event_meta(str(chat_id), result.message_id, self._self_pubkey, content)
+            self._huddle_note_sent(result.message_id, content)
         return result
 
     def _reply_args(self, anchor: Optional[str]) -> list[str]:
@@ -873,6 +859,10 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
             return SendResult(success=False, error="Buzz edit needs a message id")
         if not content:
             return SendResult(success=False, error="Empty message")
+        if (spoken := self._huddle_reply(chat_id, content, message_id, final=finalize)) is not None:
+            return spoken
+        if self._huddle_redundant_finalize(message_id, content, finalize):
+            return SendResult(success=True, message_id=str(message_id))
         # Unlike ``messages send``, the CLI's ``messages edit`` takes ``--content`` literally (no ``-``/stdin
         # expansion); the ``=`` form keeps clap from reading hyphen-leading text as a flag.
         args = ["messages", "edit", "--event", str(message_id), f"--content={content}"]
@@ -883,6 +873,7 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
         if data.get("event_id"):
             # The edit is itself a relay event that echoes back on our subscription.
             self._mark_seen(str(chat_id), str(data["event_id"]))
+        self._huddle_note_sent(message_id, content)
         return SendResult(success=bool(data.get("accepted", True)), message_id=str(message_id), raw_response=data)
 
     async def delete_message(self, chat_id: str, message_id: str) -> bool:
@@ -919,6 +910,8 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
 
         See #74999.
         """
+        if (refused := self._huddle_refuse_media(chat_id)) is not None:
+            return refused
         local = Path(file_path).expanduser()
         if probe and not local.is_file():
             # Never leak host filesystem paths into chat-visible errors.
@@ -1063,7 +1056,7 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
             subscriptions[f"hermes-buzz-{index}"] = channel_id
             await self._send_channel_subscription(websocket, f"hermes-buzz-{index}", channel_id)
         if self._self_pubkey:
-            membership = {"kinds": [_WS_MEMBERSHIP_KIND], "#p": [self._self_pubkey], "since": max(self._membership_since - 1, 0)}
+            membership = {"kinds": self._huddle_membership_kinds(), "#p": [self._self_pubkey], "since": max(self._membership_since - 1, 0)}
             await self._send_req(websocket, _WS_MEMBERSHIP_SUB_ID, membership)
             subscriptions[_WS_MEMBERSHIP_SUB_ID] = None
         return subscriptions
@@ -1117,6 +1110,7 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
                 ) as websocket:
                     await self._authenticate_websocket(websocket)
                     subscriptions = await self._subscribe_websocket(websocket)
+                    self._set_ws_live(True)  # open + NIP-42 authed + subscribed: presence may say "online"
                     if self._ws_ready is not None:
                         self._ws_ready.set()
                     if reconnecting:
@@ -1135,12 +1129,16 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
                         for finished in done:
                             finished.result()
                     finally:
+                        self._set_ws_live(False)  # before the close handshake, which can take close_timeout
+                        await self._huddle_transport_lost()  # removals can't arrive now: leave voice (bounded)
                         for task in tasks:
                             task.cancel()
                         await asyncio.gather(*tasks, return_exceptions=True)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
+                self._set_ws_live(False)  # also covers failures before the read loop (auth, subscribe)
+                await self._huddle_transport_lost()
                 # The health map only ever saw "connected"; say "retrying" until the socket is back (#112049).
                 if not reconnecting:
                     reconnecting = True
@@ -1191,6 +1189,7 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
             if subscription_id == _WS_MEMBERSHIP_SUB_ID:
                 # A membership event p-tagged to us: rediscover and subscribe to new conversations.
                 self._membership_since = max(self._membership_since, int(event.get("created_at") or 0))
+                self._note_membership_notification(event)  # before rediscovery, so a voiced huddle is never adopted
                 await self._rediscover_and_subscribe(websocket, subscriptions)
                 return
             channel_id = subscriptions.get(subscription_id)
@@ -1222,12 +1221,17 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
             try:
                 if self._poll_count % _DM_DISCOVERY_EVERY == 0:
                     await self._discover_dms(seed=False)
-                for channel_id in list(self._channel_state):
-                    await self._poll_channel(channel_id)
+                ok = [await self._poll_channel(channel_id) for channel_id in list(self._channel_state)]
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.warning("Buzz: poll sweep failed", exc_info=True)
+                continue
+            if any(ok):  # at least one fetch reached the relay: the receive path is proven for this sweep
+                was_healthy = self._presence_transport_healthy()
+                self._last_poll_ok = time.monotonic()
+                if not was_healthy:
+                    self._presence_poke()
 
     def _new_channel_state(self, chat_type: str) -> dict:
         return {"chat_type": chat_type, "last_ts": 0, "seen": OrderedDict(), "event_meta": OrderedDict()}
@@ -1291,7 +1295,7 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
                 continue
             self._channel_meta[ch_id] = ch
             self._channel_names.setdefault(ch_id, str(ch.get("name") or ch_id))
-            if ch_id in self._restricted_channels:
+            if ch_id in self._restricted_channels or self._huddle_owns_channel(ch_id):
                 continue
             if self._may_reclassify_as_dm(ch_id):
                 # DM-shaped entries promote to DM — including ones already watched.
@@ -1316,10 +1320,11 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
         elif not self._restore_channel_state(channel_id, "dm"):
             self._channel_state[channel_id] = self._new_channel_state("dm")
 
-    async def _poll_channel(self, channel_id: str) -> None:
+    async def _poll_channel(self, channel_id: str) -> bool:
+        """Poll one channel; True when the relay fetch itself succeeded (drives poll-transport presence health)."""
         state = self._channel_state.get(channel_id)
         if state is None:
-            return
+            return False
         args = ["messages", "get", "--channel", channel_id, "--limit", str(_FETCH_LIMIT)]
         if state["last_ts"]:
             # Nostr `since` is inclusive: same-second events re-fetch and de-dupe by id.
@@ -1327,8 +1332,9 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
         code, out, err = await self._run_cli(args)
         if code != 0:
             logger.debug("Buzz: poll of channel %s failed — %s", channel_id, _cli_error_message(err, code))
-            return
+            return False
         await self._handle_events(channel_id, state, _parse_json_list(out))
+        return True
 
     async def _handle_events(self, channel_id: str, state: dict, events: list[dict]) -> None:
         """Handle a batch, trim, and persist only when the cursor moved (idle channels don't rewrite the file)."""
@@ -1557,7 +1563,18 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
     def _is_addressed(self, event: dict) -> bool:
         """True when a group event carries an explicit text or p-tag address."""
         content = event.get("content")
-        return isinstance(content, str) and (self._is_mentioned(content) or self._p_tagged_to_self(event))
+        return isinstance(content, str) and (
+            self._is_mentioned(content) or self._p_tagged_to_self(event) or self._is_owner_broadcast(event)
+        )
+
+    def _is_owner_broadcast(self, event: dict) -> bool:
+        """True for a standalone "@all" token from a configured broadcast identity (never from ourselves)."""
+        pubkey = str(event.get("pubkey") or "").lower()
+        content = event.get("content")
+        return bool(
+            pubkey and pubkey != self._self_pubkey and pubkey in self._broadcast_pubkeys
+            and isinstance(content, str) and _BROADCAST_RE.search(content)
+        )
 
     def _strip_mention(self, content: str) -> str:
         """Strip a LEADING @mention of this agent so ``is_command()`` sees "/whoami"; mid-sentence mentions stay."""
@@ -1670,20 +1687,20 @@ class BuzzAdapter(BuzzCursorMixin, BasePlatformAdapter):
     ) -> tuple[str, list[str], list[str], MessageType]:
         """Authenticate and cache same-relay media refs in *text* (failures skipped per object). Spends our
         credentials on a sender-chosen URL, so it runs only on the gateway's explicit ``True``."""
-        urls, replacements = _find_relay_media_refs(text, self.relay_url)
+        urls, replacements = _media_refs._find_relay_media_refs(text, self.relay_url)
         if not urls:
             return text, [], [], MessageType.TEXT
         if self._is_sender_authorized(user_id, chat_type, chat_id) is not True:
             logger.warning("Buzz: not localizing %d media reference(s) in message %s — sender %s… is not explicitly authorized",
                            len(urls), message_id[:12], (user_id or "?")[:8])
             return text, [], [], MessageType.TEXT
-        cleaned_text = _replace_media_refs(text, replacements)
+        cleaned_text = _media_refs._replace_media_refs(text, replacements)
         media_urls: list[str] = []
         media_types: list[str] = []
         media_kinds: list[str] = []
         from gateway.platforms.base import cache_media_bytes_async, validate_inbound_media_size
         for url in urls:
-            path_match = _MEDIA_PATH_RE.fullmatch(urlsplit(url).path)
+            path_match = _media_refs._MEDIA_PATH_RE.fullmatch(urlsplit(url).path)
             if path_match is None:
                 continue
             label = f"{path_match.group('sha')[:12]}{(path_match.group('ext') or '.bin').lower()}"
