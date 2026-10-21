@@ -61,6 +61,12 @@ mv "$RELEASE/Hermes.app" "$APP"
 if [[ "${1:-}" == "--relaunch" ]]; then
   osascript -e 'tell application id "com.nousresearch.hermes" to quit' || true
   for _ in $(seq 1 30); do pgrep -f "\.app/Contents/MacOS/Hermes$" >/dev/null || break; sleep 1; done
+  # Apple Events are refused from a launchd/SSH context; then the old app would hold the
+  # single-instance lock and the new one exits at once. SIGTERM is Electron's normal quit.
+  if pgrep -f "\.app/Contents/MacOS/Hermes$" >/dev/null; then
+    pkill -TERM -f "\.app/Contents/MacOS/Hermes$" || true
+    for _ in $(seq 1 30); do pgrep -f "\.app/Contents/MacOS/Hermes$" >/dev/null || break; sleep 1; done
+  fi
   rm -rf "$INSTALLED"
   ditto "$APP" "$INSTALLED"
   open -n "$INSTALLED"
