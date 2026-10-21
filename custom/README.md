@@ -168,8 +168,9 @@ Sixteen custom commits sit on top of upstream, in `git log 0e427d788d..29629c493
     roster re-pulls an avatar whenever the rev moves, so a pfp changed on one machine shows
     on every other one instead of the first cached copy sticking forever.
 18. The app is "Hermes (Custom)": its own icon set (`apps/desktop/assets/icon*`,
-    `icon.icon/`) and `CFBundleName`/`CFBundleDisplayName`. `productName`, the executable
-    and userData stay "Hermes", so settings, connections and permissions carry over.
+    `icon.icon/`), the bundle name `Hermes (Custom).app` and `CFBundleDisplayName`.
+    `CFBundleName`, `productName`, the executable and userData stay "Hermes": Electron locates
+    its helper apps by `CFBundleName`, and settings, connections and permissions carry over.
     `build-desktop.sh --relaunch` installs it as `/Applications/Hermes (Custom).app`.
 19. Studio -> MacBook auto-sync (below).
 

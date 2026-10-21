@@ -162,13 +162,13 @@ module.exports = {
       ? [{ provider: 'generic', url: `${publicUrl}/${macFeed.directory}/`, channel: macFeed.channel }]
       : null,
     category: 'public.app-category.developer-tools',
-    // Custom line: the Finder/Dock/menu-bar name says "Hermes (Custom)" so it
-    // never reads as the stock release. Only the user-facing bundle names
-    // change: productName, the executable and userData stay "Hermes".
+    // Custom line: the Finder/Dock name says "Hermes (Custom)" so it never
+    // reads as the stock release. CFBundleName stays "Hermes": Electron finds
+    // "<CFBundleName> Helper.app" by it and aborts at launch otherwise.
     extendInfo: {
       CFBundleDisplayName: CUSTOM_DISPLAY_NAME,
       CFBundleExecutable: displayName,
-      CFBundleName: CUSTOM_DISPLAY_NAME,
+      CFBundleName: displayName,
       LSRequiresNativeExecution: true,
       NSAudioCaptureUsageDescription: `${displayName} uses audio capture for voice conversations.`,
       NSCameraUsageDescription: `${displayName} uses the camera when a plugin or feature you enable requests it.`,
