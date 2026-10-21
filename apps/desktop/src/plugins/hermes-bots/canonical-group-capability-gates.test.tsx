@@ -407,10 +407,13 @@ it.each([
       b: botsText(),
       gatewayFilter: 'all',
       gatewayOptions: [],
+      // Custom line: collapse/expand-all (no user sections here, so it stays hidden).
+      hasUserSections: false,
       query: '',
       roster: withParked,
       rowKindFilter: 'all',
       setActivityFilter: vi.fn(),
+      setAllUserSectionsCollapsed: vi.fn(),
       setCreateOpen: vi.fn(),
       setGatewayFilter: vi.fn(),
       setGroupCreateOpen,
@@ -419,7 +422,8 @@ it.each([
       setSectionDialog: vi.fn(),
       showRosterFilters: false,
       showRosterSearch: false,
-      showRosterTools: false
+      showRosterTools: false,
+      userSectionsCollapsed: false
     })
   )
 
