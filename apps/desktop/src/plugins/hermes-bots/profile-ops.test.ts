@@ -230,4 +230,56 @@ describe('roster avatar sync (#102978)', () => {
     // The raster is a notice-only copy of the live face, never parked on the roster.
     expect($botMeta.get()['local::secretary']?.image).toBeUndefined()
   })
+
+  it('replaces a cached image when the server avatar_rev moves, and only then', async () => {
+    const { pullServerAvatars } = await import('./profile-ops')
+    $botMeta.set({ 'local::courier': { image: 'data:image/png;base64,OLD' } })
+    hostMock.request.mockResolvedValue({ data: 'data:image/png;base64,NEW', found: true })
+
+    const row = (avatar_rev: string) =>
+      ({
+        avatar_rev,
+        connectionId: 'local',
+        has_avatar: true,
+        name: 'courier',
+        route: { connectionId: 'local', mode: 'local', profile: 'courier', targetProfile: 'courier' },
+        sourceScoped: true
+      }) as RosterRow
+
+    const settle = () => new Promise(resolve => setTimeout(resolve, 0))
+
+    // First sight of a rev in this window: the cached copy may predate it.
+    pullServerAvatars([row('r1')])
+    await settle()
+    expect($botMeta.get()['local::courier']?.image).toBe('data:image/png;base64,NEW')
+
+    pullServerAvatars([row('r1')])
+    await settle()
+    expect(hostMock.request).toHaveBeenCalledTimes(1)
+
+    // Another machine replaced the avatar.
+    hostMock.request.mockResolvedValue({ data: 'data:image/png;base64,NEWER', found: true })
+    pullServerAvatars([row('r2')])
+    await settle()
+    expect(hostMock.request).toHaveBeenCalledTimes(2)
+    expect($botMeta.get()['local::courier']?.image).toBe('data:image/png;base64,NEWER')
+  })
+
+  it('keeps a cached image final when the backend sends no avatar_rev', async () => {
+    const { pullServerAvatars } = await import('./profile-ops')
+    $botMeta.set({ 'local::archivist': { image: 'data:image/png;base64,KEEP' } })
+
+    pullServerAvatars([
+      {
+        connectionId: 'local',
+        has_avatar: true,
+        name: 'archivist',
+        route: { connectionId: 'local', mode: 'local', profile: 'archivist', targetProfile: 'archivist' },
+        sourceScoped: true
+      } as RosterRow
+    ])
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(hostMock.request).not.toHaveBeenCalled()
+  })
 })

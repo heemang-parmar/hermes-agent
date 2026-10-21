@@ -275,8 +275,20 @@ def _profile_ui_meta_fields(row: dict, profile_dir) -> None:
     from tui_gateway.profile_roster_cache import cached_ui_meta_fields
 
     row.update(cached_ui_meta_fields(profile_dir, _read))
-    # Cheap existence flag so rosters skip a get_asset probe per paint.
-    row["has_avatar"] = _try(lambda: any((profile_dir / "assets" / f"avatar.{e}").is_file() for e in _ASSET_EXTS), False)
+    # Cheap existence flag so rosters skip a get_asset probe per paint; the rev lets a client that
+    # cached the image notice another machine replacing it without re-pulling every paint.
+    row["avatar_rev"] = _try(lambda: _avatar_rev(profile_dir), "")
+    row["has_avatar"] = bool(row["avatar_rev"])
+
+
+def _avatar_rev(profile_dir) -> str:
+    """``<mtime_ns>-<size>`` (hex) of the stored avatar, ``""`` when there is none."""
+    for ext in _ASSET_EXTS:
+        target = profile_dir / "assets" / f"avatar.{ext}"
+        if target.is_file():
+            st = target.stat()
+            return f"{st.st_mtime_ns:x}-{st.st_size:x}"
+    return ""
 
 
 @_profile_handler("profiles.list", 5061)

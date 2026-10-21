@@ -162,6 +162,42 @@ Sixteen custom commits sit on top of upstream, in `git log 0e427d788d..29629c493
 15. Restore the ProfileGlyph grapheme and default-mark tests.
 16. A guarded desktop build script and the where-to-edit notes (this file).
 
+**Branding and sync**
+
+17. Cached roster avatars follow the server: `profiles.list` reports `avatar_rev`, and the
+    roster re-pulls an avatar whenever the rev moves, so a pfp changed on one machine shows
+    on every other one instead of the first cached copy sticking forever.
+18. The app is "Hermes (Custom)": its own icon set (`apps/desktop/assets/icon*`,
+    `icon.icon/`) and `CFBundleName`/`CFBundleDisplayName`. `productName`, the executable
+    and userData stay "Hermes", so settings, connections and permissions carry over.
+    `build-desktop.sh --relaunch` installs it as `/Applications/Hermes (Custom).app`.
+19. Studio -> MacBook auto-sync (below).
+
+## Keeping the MacBook in sync
+
+Commits on `custom/desktop` reach the MacBook Pro by themselves:
+
+- **Studio** — `com.hermes.custom-sync-push` (launchd, every 2 min) runs `sync-push.sh`:
+  when the branch has commits the `fork` remote lacks it fast-forward-pushes them, then kicks
+  the MacBook's pull job over SSH (`~/.ssh/hermes_macbook_ed25519`).
+- **MacBook** — `com.hermes.custom-sync-pull` (launchd, every 15 min and on that kick) runs
+  `sync-pull.sh`: fast-forwards from the fork, `npm ci` when `package-lock.json` moved,
+  then `build-desktop.sh --relaunch`. The last built commit is stamped in
+  `~/Library/Application Support/hermes-custom-sync/built-rev`; a failed build retries.
+
+Only committed work travels, and neither side ever forces: a diverged branch stops the sync
+and logs why. Logs: `/tmp/hermes-custom-sync-{push,pull}.log`. Install or reinstall a job:
+
+```bash
+cp custom/launchd/com.hermes.custom-sync-push.plist ~/Library/LaunchAgents/   # Studio
+cp custom/launchd/com.hermes.custom-sync-pull.plist ~/Library/LaunchAgents/   # MacBook
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.hermes.custom-sync-<role>.plist
+```
+
+The backend half of the avatar fix (`tui_gateway/methods_profiles.py`) must also be in the main
+checkout that serves the roster (`~/.hermes/hermes-agent` on the Studio); until it is, rows
+carry no `avatar_rev` and the roster keeps its old cache-forever behaviour.
+
 ## Pinned regressions
 
 These pending test files arrived as untracked work and are now committed with the

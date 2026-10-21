@@ -40,8 +40,13 @@ import type { BotMeta, RosterRow } from './types'
 const avatarFetchInflight = new Set<string>()
 const avatarPushInflight = new Set<string>()
 // Rows whose server avatar is only the plugin's own face raster: nothing to
-// paint, so the roster must not re-fetch it on every tick.
-const avatarFaceOnly = new Set<string>()
+// paint, so the roster must not re-fetch it on every tick. Keyed to the
+// avatar_rev it was seen at, so a real image uploaded later is still pulled.
+const avatarFaceOnly = new Map<string, string | undefined>()
+// The server avatar_rev this window last pulled per row. Unknown at launch, so
+// a cached image is re-checked once per window and again whenever another
+// machine replaces the avatar; without it the first cached copy is permanent.
+const avatarRevPulled = new Map<string, string>()
 
 /** Asset RPC for a row of the ACTIVE source's roster (#102978, #99336, #102913). These rows
  *  came back from the active gateway's own `profiles.list`, which reads every
@@ -163,18 +168,26 @@ interface ProfilesGetAssetResult {
 }
 
 /** Fetch server-side avatars for roster rows flagged has_avatar when the
- *  local cache doesn't already have an image for them. Fire-and-forget. */
+ *  local cache has no image for them or the server's avatar_rev moved since
+ *  this window last pulled it. Fire-and-forget. */
 export function pullServerAvatars(roster: RosterRow[]) {
   pushLocalAvatars(roster)
 
   for (const bot of roster) {
     const key = botMetaKey(bot)
 
-    if (!bot.has_avatar || avatarFetchInflight.has(key) || avatarFaceOnly.has(key)) {
+    const rev = bot.avatar_rev
+
+    if (!bot.has_avatar || avatarFetchInflight.has(key)) {
       continue
     }
 
-    if ($botMeta.get()[key]?.image) {
+    if (avatarFaceOnly.has(key) && avatarFaceOnly.get(key) === rev) {
+      continue
+    }
+
+    // Older backends send no avatar_rev: a cached image is then final, as before.
+    if ($botMeta.get()[key]?.image && (!rev || avatarRevPulled.get(key) === rev)) {
       continue
     }
 
@@ -196,8 +209,18 @@ export function pullServerAvatars(roster: RosterRow[]) {
           // and remember the answer, or the empty image slot re-fetches the
           // same raster on every roster tick.
           if (isBackfilledFacePng(res.data) && mine.imageKind !== 'photo' && !mine.pet) {
-            avatarFaceOnly.add(key)
+            avatarFaceOnly.set(key, rev)
 
+            return
+          }
+
+          avatarFaceOnly.delete(key)
+
+          if (rev) {
+            avatarRevPulled.set(key, rev)
+          }
+
+          if (mine.image === res.data) {
             return
           }
 

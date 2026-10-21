@@ -55,6 +55,9 @@ const { OUT_OF_STORE_PUBLISHER, channelBuildRequest, stageChannelManifest } = re
 const { macIconResource } = require('./scripts/mac-icon.cjs')
 const channelRequest = channelBuildRequest()
 
+// custom/README.md § Carried changes: the custom line's user-facing app name.
+const CUSTOM_DISPLAY_NAME = 'Hermes (Custom)'
+
 /** @typedef {import("app-builder-lib").Configuration} Configuration */
 
 const [owner, repo] = (process.env.GITHUB_REPOSITORY || 'NousResearch/hermes-agent').split('/')
@@ -159,10 +162,13 @@ module.exports = {
       ? [{ provider: 'generic', url: `${publicUrl}/${macFeed.directory}/`, channel: macFeed.channel }]
       : null,
     category: 'public.app-category.developer-tools',
+    // Custom line: the Finder/Dock/menu-bar name says "Hermes (Custom)" so it
+    // never reads as the stock release. Only the user-facing bundle names
+    // change: productName, the executable and userData stay "Hermes".
     extendInfo: {
-      CFBundleDisplayName: displayName,
+      CFBundleDisplayName: CUSTOM_DISPLAY_NAME,
       CFBundleExecutable: displayName,
-      CFBundleName: displayName,
+      CFBundleName: CUSTOM_DISPLAY_NAME,
       LSRequiresNativeExecution: true,
       NSAudioCaptureUsageDescription: `${displayName} uses audio capture for voice conversations.`,
       NSCameraUsageDescription: `${displayName} uses the camera when a plugin or feature you enable requests it.`,

@@ -3,7 +3,8 @@
 # custom/desktop worktree.
 #
 #   custom/build-desktop.sh            build only
-#   custom/build-desktop.sh --relaunch build, quit the running app, open the new one
+#   custom/build-desktop.sh --relaunch build, quit the running app, install it as
+#                                      /Applications/Hermes (Custom).app and open it
 #
 # Refuses to build while desktop source edits exist anywhere they would be lost:
 #   * uncommitted edits in the main checkout (~/.hermes/hermes-agent) — they are
@@ -18,7 +19,13 @@ set -euo pipefail
 WORKTREE="$(cd "$(dirname "$0")/.." && pwd)"
 MAIN="${HERMES_MAIN_CHECKOUT:-$HOME/.hermes/hermes-agent}"
 PATHS=(apps/desktop apps/shared)
-APP="$WORKTREE/apps/desktop/release/mac-arm64/Hermes.app"
+RELEASE="$WORKTREE/apps/desktop/release/mac-arm64"
+# The packager writes Hermes.app; the custom line ships it as "Hermes (Custom).app"
+# so it never reads as the stock release. Renaming the bundle keeps its signature.
+APP="$RELEASE/Hermes (Custom).app"
+# The running copy lives outside release/: before-pack wipes that directory on
+# every build, which deleted a running app's bundle out from under it.
+INSTALLED="/Applications/Hermes (Custom).app"
 
 fail=0
 main_dirty="$(git -C "$MAIN" status --porcelain -- "${PATHS[@]}" || true)"
@@ -48,12 +55,17 @@ cd "$WORKTREE/apps/desktop"
 echo "→ Building $(git -C "$WORKTREE" log -1 --format='%h %s')"
 npm run build
 npm run builder -- --dir --publish never
+rm -rf "$APP"
+mv "$RELEASE/Hermes.app" "$APP"
+codesign --verify --deep --strict "$APP"
 
 if [[ "${1:-}" == "--relaunch" ]]; then
   osascript -e 'tell application id "com.nousresearch.hermes" to quit' || true
-  for _ in $(seq 1 30); do pgrep -f "Hermes.app/Contents/MacOS/Hermes$" >/dev/null || break; sleep 1; done
-  open -n "$APP"
-  echo "✓ Relaunched $APP"
+  for _ in $(seq 1 30); do pgrep -f "\.app/Contents/MacOS/Hermes$" >/dev/null || break; sleep 1; done
+  rm -rf "$INSTALLED"
+  ditto "$APP" "$INSTALLED"
+  open -n "$INSTALLED"
+  echo "✓ Relaunched $INSTALLED"
 else
   echo "✓ Built $APP (run with --relaunch to swap it in)"
 fi

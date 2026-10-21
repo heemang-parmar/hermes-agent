@@ -116,6 +116,8 @@ export interface RosterRow {
   ghost?: boolean
   handle?: string
   has_avatar?: boolean
+  /** Changes whenever the server avatar file is rewritten (`profiles.list`). */
+  avatar_rev?: string
   /** The connection's backend identity (/api/status `install_id`) when the
    *  roster source has seen it — stable across Desktops, unlike `connectionId`
    *  / `connectionLabel`, which are THIS Desktop's names for the connection. */
