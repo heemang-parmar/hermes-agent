@@ -14,7 +14,7 @@ before running any updater — the stock `hermes update` will replace a custom a
 | --- | --- |
 | Integration branch | `custom/desktop-merge-into-main` |
 | Custom tip it merges | `custom/desktop` @ `29629c4933` |
-| Upstream snapshot examined | `601491feb3` (2026-10-20) |
+| Upstream snapshot examined | `601491feb3` (2026-10-20); since merged up to `v0.22.2+canary.20261021T070232Z` (`278aeffe16`) |
 | Merge commit | `a421de8ebe` (parents `29629c4933 601491feb3`) |
 | Merge type | true merge, **no rebase, no history rewrite** |
 | Conflicts resolved | 1 (`apps/desktop/src/plugins/hermes-bots/i18n.ts`) |
@@ -91,23 +91,39 @@ npm run pack -- --publish never           # unpacked .app in apps/desktop/releas
 
 ## Taking a further upstream update
 
+`custom/upstream-update.sh` does the whole thing, gated, and runs by itself on the Studio every
+day at 04:30 (`com.hermes.custom-upstream-update`, log `/tmp/hermes-custom-upstream-update.log`).
+Run it by hand any time:
+
 ```bash
-cd ~/.hermes-integration/hermes-agent-integration
-git fetch origin main
-git merge <new-main-sha>                  # true merge; never rebase the custom line
-# resolve conflicts, then run the full gate set above before committing
-git push fork custom/desktop-merge-into-main
+~/.hermes/hermes-desktop-custom/custom/upstream-update.sh          # newest canary (upstream main, CI-tagged)
+~/.hermes/hermes-desktop-custom/custom/upstream-update.sh stable   # newest vX.Y.Z release
 ```
 
-Pin the upstream SHA you actually examined. A moving `origin/main` makes a merge
-non-reproducible and turns a green gate run into a claim about a commit that was
-never tested.
+It pins the newest official tag, true-merges it in `~/.hermes-integration/upstream-<tag>` and
+moves `custom/desktop` only when every gate passes:
 
-Merge conflicts are expected: the custom line touches `apps/desktop` heavily.
-Expect at minimum the Bots i18n surface — upstream extracts `BotsMessages` into
-`apps/desktop/src/plugins/hermes-bots/i18n-messages.ts`, so every custom key
-(`org`, `sections` extensions, `pinned`, `collapseAll`, `expandAll`, `colorName`, …)
-must be carried into the extracted file rather than left in `i18n.ts`.
+1. no merge conflicts (never a rebase);
+2. the custom delta over upstream is line-for-line unchanged by the merge;
+3. typecheck, lint, the renderer suite and the build pass; the electron suite may fail only
+   where pre-merge `custom/desktop` fails the same way (six tests are host-specific on the
+   Studio and fail on pure upstream too);
+4. the pinned backend regressions pass.
+
+Then it rebuilds the Studio app and pushes; the MacBook follows through `sync-pull`. Any failing
+gate stops with a macOS notification and leaves the candidate branch, worktree and per-gate logs
+(`~/.hermes-integration/upstream-<tag>.logs/`) for a human. Fix on the candidate branch, rerun the
+gates, then `git merge --ff-only` it into `custom/desktop`; a candidate branch that still exists
+blocks the next automatic attempt so a broken merge is never retried blind.
+
+Conflicts and semantic breaks are expected now and then: the custom line touches `apps/desktop`
+heavily. Upstream's Bots i18n lives in `apps/desktop/src/plugins/hermes-bots/i18n-messages.ts`,
+so custom keys (`org`, `sections` extensions, `pinned`, `collapseAll`, `expandAll`, `colorName`, …)
+belong there. Upstream tests that render `renderRosterToolbar` must pass the custom
+collapse-all props (`hasUserSections`, `userSectionsCollapsed`, `setAllUserSectionsCollapsed`).
+
+The backend in `~/.hermes/hermes-agent` stays on the stable channel (`hermes update`); this
+script only moves the app.
 
 ## Rollback
 
