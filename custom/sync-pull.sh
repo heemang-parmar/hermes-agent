@@ -47,7 +47,13 @@ if [[ -z "$built" ]] || ! git -C "$WORKTREE" diff --quiet "$built" "$head" -- pa
 fi
 
 echo "$(date '+%F %T') building ${head:0:10}"
-"$WORKTREE/custom/build-desktop.sh" --relaunch
+# node_modules can be damaged under an unchanged lockfile (packages vanished here once); a clean
+# install and one retry tells that apart from a real build failure.
+if ! "$WORKTREE/custom/build-desktop.sh" --relaunch; then
+  echo "$(date '+%F %T') build failed; reinstalling dependencies and retrying once"
+  (cd "$WORKTREE" && npm ci --no-audit --no-fund --loglevel=error)
+  "$WORKTREE/custom/build-desktop.sh" --relaunch
+fi
 mkdir -p "$(dirname "$STAMP")"
 echo "$head" > "$STAMP"
 echo "$(date '+%F %T') ✓ running ${head:0:10}"
