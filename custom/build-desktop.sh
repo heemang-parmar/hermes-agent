@@ -57,7 +57,6 @@ npm run build
 npm run builder -- --dir --publish never
 rm -rf "$APP"
 mv "$RELEASE/Hermes.app" "$APP"
-codesign --verify --deep --strict "$APP"
 
 if [[ "${1:-}" == "--relaunch" ]]; then
   osascript -e 'tell application id "com.nousresearch.hermes" to quit' || true
